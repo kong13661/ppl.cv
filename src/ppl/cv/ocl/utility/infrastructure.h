@@ -40,6 +40,11 @@ if (!(expression)) {                                                           \
   exit(-1);                                                                    \
 }
 
+enum MaskType {
+  kUnmasked,
+  kMasked,
+};
+
 cv::Mat createSourceImage(int rows, int cols, int type);
 cv::Mat createSourceImage(int rows, int cols, int type, float begin,
                           float end);

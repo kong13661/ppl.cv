@@ -14,7 +14,7 @@
  * under the License.
  */
 
-#include "ppl/cv/ocl/abs.h"
+#include "ppl/cv/ocl/transpose.h"
 
 #include <tuple>
 #include <sstream>
@@ -25,8 +25,9 @@
 #include "ppl/common/ocl/pplopencl.h"
 #include "utility/infrastructure.h"
 
+
 using Parameters = std::tuple<cv::Size>;
-inline std::string convertToString(const Parameters& parameters) {
+inline std::string transposeToString(const Parameters& parameters) {
   std::ostringstream formatted;
 
   cv::Size size = std::get<0>(parameters);
@@ -37,9 +38,9 @@ inline std::string convertToString(const Parameters& parameters) {
 }
 
 template <typename T, int channels>
-class PplCvOclAbsTest : public ::testing::TestWithParam<Parameters> {
+class PplCvOclTransposeToTest: public ::testing::TestWithParam<Parameters> {
  public:
-  PplCvOclAbsTest() {
+  PplCvOclTransposeToTest() {
     const Parameters& parameters = GetParam();
     size = std::get<0>(parameters);
 
@@ -56,9 +57,7 @@ class PplCvOclAbsTest : public ::testing::TestWithParam<Parameters> {
     }
   }
 
-  ~PplCvOclAbsTest() {
-    ppl::common::ocl::shutDownKernelBinariesManager(
-        ppl::common::ocl::BINARIES_RETRIEVE);
+  ~PplCvOclTransposeToTest() {
   }
 
   bool apply();
@@ -70,58 +69,65 @@ class PplCvOclAbsTest : public ::testing::TestWithParam<Parameters> {
 };
 
 template <typename T, int channels>
-bool PplCvOclAbsTest<T, channels>::apply() {
+bool PplCvOclTransposeToTest<T, channels>::apply() {
   cv::Mat src;
   src = createSourceImage(size.height, size.width,
-                          CV_MAKETYPE(cv::DataType<T>::depth, channels));
-  cv::Mat dst(size.height, size.width,
+                           CV_MAKETYPE(cv::DataType<T>::depth, channels));
+  cv::Mat dst(size.width, size.height, 
               CV_MAKETYPE(cv::DataType<T>::depth, channels));
-  cv::Mat cv_dst(size.height, size.width,
+  cv::Mat cv_dst(size.width, size.height,
                  CV_MAKETYPE(cv::DataType<T>::depth, channels));
 
-  int src_bytes = src.rows * src.step;
-  int dst_bytes = dst.rows * dst.step;
+  int src_bytes0 = src.rows * src.step;
+  int dst_bytes0 = dst.rows * dst.step;
   cl_int error_code = 0;
   cl_mem gpu_src = clCreateBuffer(context,
-                                  CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY,
-                                  src_bytes, NULL, &error_code);
+                                   CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY,
+                                   src_bytes0, NULL, &error_code);
   CHECK_ERROR(error_code, clCreateBuffer);
+
   cl_mem gpu_dst = clCreateBuffer(context,
                                   CL_MEM_WRITE_ONLY | CL_MEM_HOST_READ_ONLY,
-                                  dst_bytes, NULL, &error_code);
+                                  dst_bytes0, NULL, &error_code);
   CHECK_ERROR(error_code, clCreateBuffer);
-  error_code = clEnqueueWriteBuffer(queue, gpu_src, CL_FALSE, 0, src_bytes,
+
+  error_code = clEnqueueWriteBuffer(queue, gpu_src, CL_FALSE, 0, src_bytes0,
                                     src.data, 0, NULL, NULL);
   CHECK_ERROR(error_code, clEnqueueWriteBuffer);
 
-  int data_size = size.height * size.width * channels * sizeof(T);
-  T* input  = (T*)malloc(data_size);
-  T* output = (T*)malloc(data_size);
+  int src_bytes1 = size.height * size.width * channels * sizeof(T);
+  int dst_bytes1 = (size.height) * (size.width) * channels * sizeof(T);
   cl_mem gpu_input = clCreateBuffer(context,
-                                    CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY,
-                                    data_size, NULL, &error_code);
+                                    CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR,
+                                    src_bytes1, NULL, &error_code);
   CHECK_ERROR(error_code, clCreateBuffer);
-  cl_mem gpu_output = clCreateBuffer(context,
-                                     CL_MEM_WRITE_ONLY | CL_MEM_HOST_READ_ONLY,
-                                     data_size, NULL, &error_code);
-  CHECK_ERROR(error_code, clCreateBuffer);
-  copyMatToArray(src, input);
-  error_code = clEnqueueWriteBuffer(queue, gpu_input, CL_FALSE, 0, data_size,
-                                    input, 0, NULL, NULL);
-  CHECK_ERROR(error_code, clEnqueueWriteBuffer);
 
-  cv_dst = cv::abs(src);
-  ppl::cv::ocl::Abs<T, channels>(queue, src.rows, src.cols,
+  cl_mem gpu_output = clCreateBuffer(context,
+                                     CL_MEM_WRITE_ONLY | CL_MEM_ALLOC_HOST_PTR,
+                                     dst_bytes1, NULL, &error_code);
+  CHECK_ERROR(error_code, clCreateBuffer);
+
+  T* input = (T*)clEnqueueMapBuffer(queue, gpu_input, CL_TRUE, CL_MAP_WRITE,
+                                    0, src_bytes1, 0, NULL, NULL, &error_code);
+  CHECK_ERROR(error_code, clEnqueueMapBuffer);
+
+  copyMatToArray(src, input);
+  error_code = clEnqueueUnmapMemObject(queue, gpu_input, input, 0, NULL, NULL);
+  CHECK_ERROR(error_code, clEnqueueUnmapMemObject);
+
+  cv::transpose(src, cv_dst);
+  ppl::cv::ocl::Transpose<T, channels>(queue, src.rows, src.cols,
       src.step / sizeof(T), gpu_src, dst.step / sizeof(T), gpu_dst);
-  error_code = clEnqueueReadBuffer(queue, gpu_dst, CL_TRUE, 0, dst_bytes,
+  ppl::cv::ocl::Transpose<T, channels>(queue, size.height, size.width,
+      size.width * channels, gpu_input, size.height * channels, gpu_output);
+
+  error_code = clEnqueueReadBuffer(queue, gpu_dst, CL_TRUE, 0, dst_bytes0,
                                    dst.data, 0, NULL, NULL);
   CHECK_ERROR(error_code, clEnqueueReadBuffer);
 
-  ppl::cv::ocl::Abs<T, channels>(queue, size.height, size.width,
-      size.width * channels, gpu_input, size.width * channels, gpu_output);
-  error_code = clEnqueueReadBuffer(queue, gpu_output, CL_TRUE, 0, data_size,
-                                   output, 0, NULL, NULL);
-  CHECK_ERROR(error_code, clEnqueueReadBuffer);
+  T* output = (T*)clEnqueueMapBuffer(queue, gpu_output, CL_TRUE, CL_MAP_READ,
+                                     0, dst_bytes1, 0, NULL, NULL, &error_code);
+  CHECK_ERROR(error_code, clEnqueueMapBuffer);
 
   float epsilon;
   if (sizeof(T) == 1) {
@@ -130,15 +136,17 @@ bool PplCvOclAbsTest<T, channels>::apply() {
   else {
     epsilon = EPSILON_E6;
   }
+
   bool identity0 = checkMatricesIdentity<T>((const T*)cv_dst.data, cv_dst.rows,
       cv_dst.cols, cv_dst.channels(), cv_dst.step, (const T*)dst.data, dst.step,
       epsilon);
   bool identity1 = checkMatricesIdentity<T>((const T*)cv_dst.data, cv_dst.rows,
       cv_dst.cols, cv_dst.channels(), cv_dst.step, output,
-      size.width * channels * sizeof(T), epsilon);
+      dst.cols * channels * sizeof(T), epsilon);
+  error_code = clEnqueueUnmapMemObject(queue, gpu_output, output, 0, NULL,
+                                       NULL);
+  CHECK_ERROR(error_code, clEnqueueUnmapMemObject);
 
-  free(input);
-  free(output);
   clReleaseMemObject(gpu_src);
   clReleaseMemObject(gpu_dst);
   clReleaseMemObject(gpu_input);
@@ -148,26 +156,32 @@ bool PplCvOclAbsTest<T, channels>::apply() {
 }
 
 #define UNITTEST(T, channels)                                                  \
-using PplCvOclAbsTest ## T ## channels = PplCvOclAbsTest<T, channels>;         \
-TEST_P(PplCvOclAbsTest ## T ## channels, Standard) {                           \
+using PplCvOclTransposeToTest ## T ## channels =                                   \
+        PplCvOclTransposeToTest<T, channels>;                                      \
+TEST_P(PplCvOclTransposeToTest ## T ## channels, Standard) {                       \
   bool identity = this->apply();                                               \
   EXPECT_TRUE(identity);                                                       \
 }                                                                              \
                                                                                \
-INSTANTIATE_TEST_CASE_P(IsEqual, PplCvOclAbsTest ## T ## channels,             \
-  ::testing::Values(cv::Size{321, 240}, cv::Size{642, 480},                    \
-                    cv::Size{1283, 720}, cv::Size{1934, 1080},                 \
+INSTANTIATE_TEST_CASE_P(IsEqual,                                               \
+  PplCvOclTransposeToTest ## T ## channels,                                        \
+  ::testing::Combine(                                                          \
+    ::testing::Values(cv::Size{321, 240}, cv::Size{642, 480},                    \
+                    cv::Size{1283, 720}, cv::Size{1976, 1080},                 \
                     cv::Size{320, 240}, cv::Size{640, 480},                    \
-                    cv::Size{1280, 720}, cv::Size{1920, 1080}),                \
+                    cv::Size{1280, 720}, cv::Size{1920, 1080})),             \
   [](const testing::TestParamInfo<                                             \
-      PplCvOclAbsTest ## T ## channels::ParamType>& info) {                    \
-    return convertToString(info.param);                                        \
+      PplCvOclTransposeToTest ## T ## channels::ParamType>&                        \
+        info) {                                                                \
+    return transposeToString(info.param);                                          \
   }                                                                            \
 );
 
-// UNITTEST(schar, 1)
-// UNITTEST(schar, 3)
-// UNITTEST(schar, 4)
-// UNITTEST(float, 1)
-// UNITTEST(float, 3)
+
+
+UNITTEST(uchar, 1)
+UNITTEST(float, 1)
+UNITTEST(uchar, 3)
+UNITTEST(uchar, 4)
+UNITTEST(float, 3)
 UNITTEST(float, 4)
