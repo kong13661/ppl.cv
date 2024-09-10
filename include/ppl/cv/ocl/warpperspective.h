@@ -14,13 +14,13 @@
  * under the License.
  */
 
-#ifndef _ST_HPC_PPL_CV_OCL_CALCHIST_H_
-#define _ST_HPC_PPL_CV_OCL_CALCHIST_H_
+#ifndef _ST_HPC_PPL_CV_OCL_WARPPERSPECTIVE_H_
+#define _ST_HPC_PPL_CV_OCL_WARPPERSPECTIVE_H_
 
 #include "CL/cl.h"
 
 #include "ppl/common/retcode.h"
-#include "ppl/cv/ocl/kerneltypes.h"
+#include "ppl/cv/types.h"
 
 namespace ppl {
 namespace cv {
@@ -114,14 +114,13 @@ ppl::common::RetCode WarpPerspective(cl_command_queue queue,
                                   int outWidth,
                                   int outWidthStride,
                                   cl_mem outData,
-                                  const float *affineMatrix,
+                                  const float *perspectiveMatrix,
                                   InterpolationType interpolation,
                                   BorderType border_type,
-                                  T borderValue,
-                                  cl_context context);
+                                  T borderValue);
 
 }  // namespace ocl
 }  // namespace cv
 }  // namespace ppl
 
-#endif  // _ST_HPC_PPL_CV_OCL_CALCHIST_H_
+#endif  // _ST_HPC_PPL_CV_OCL_WARPPERSPECTIVE_H_

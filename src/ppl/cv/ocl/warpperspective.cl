@@ -16,13 +16,12 @@
 
 #include "kerneltypes.h"
 
-#define AB_BITS 10
 #define AB_SCALE 1024
 #define ROUND_DELTA 512
 
-#if defined(WARPAFFINE_LINEAR_U8) || defined(ALL_KERNELS)
+#if defined(WARPPERSPECTIVE_LINEAR_U8) || defined(ALL_KERNELS)
 __kernel
-void warpaffineLinearU8Kernel(global const uchar* src, int src_rows,
+void warpperspectiveLinearU8Kernel(global const uchar* src, int src_rows,
          int src_cols, int channels, int src_stride, float coeff0, float coeff1,
          float coeff2, float coeff3, float coeff4, float coeff5,
          float coeff6, float coeff7, float coeff8, global uchar* dst, 
@@ -36,11 +35,11 @@ void warpaffineLinearU8Kernel(global const uchar* src, int src_rows,
 
   float2 src_xy;
 
-  float weight = coeffe6 * element_x + coeffe7 * element_y + coeffe8;
+  float weight = coeff6 * element_x + coeff7 * element_y + coeff8;
   weight = 1.f / weight;
 
-  src_xy.x = (coeffe0 * element_x + coeffe1 * element_y + coeffe2) * weight;
-  src_xy.y = (coeffe3 * element_x + coeffe4 * element_y + coeffe5) * weight;
+  src_xy.x = (coeff0 * element_x + coeff1 * element_y + coeff2) * weight;
+  src_xy.y = (coeff3 * element_x + coeff4 * element_y + coeff5) * weight;
 
   int src_x0 = floor(src_xy.x);
   int src_y0 = floor(src_xy.y);
@@ -221,12 +220,12 @@ void warpaffineLinearU8Kernel(global const uchar* src, int src_rows,
 }
 #endif
 
-#if defined(WARPAFFINE_LINEAR_F32) || defined(ALL_KERNELS)
+#if defined(WARPPERSPECTIVE_LINEAR_F32) || defined(ALL_KERNELS)
 __kernel
-void warpaffineLinearF32Kernel(global const float* src, int src_rows,
+void warpperspectiveLinearF32Kernel(global const float* src, int src_rows,
          int src_cols, int channels, int src_stride, float coeff0, float coeff1,
          float coeff2, float coeff3, float coeff4, float coeff5,
-         flaot coeff6, float coeff7, float coeff8, global float* dst, 
+         float coeff6, float coeff7, float coeff8, global float* dst, 
          int dst_rows, int dst_cols, int dst_stride,
          enum BorderType border_type, float border_value) {
   int element_x = get_global_id(0);
@@ -237,11 +236,11 @@ void warpaffineLinearF32Kernel(global const float* src, int src_rows,
 
   float2 src_xy;
 
-  float weight = coeffe6 * element_x + coeffe7 * element_y + coeffe8;
+  float weight = coeff6 * element_x + coeff7 * element_y + coeff8;
   weight = 1.f / weight;
 
-  src_xy.x = (coeffe0 * element_x + coeffe1 * element_y + coeffe2) * weight;
-  src_xy.y = (coeffe3 * element_x + coeffe4 * element_y + coeffe5) * weight;
+  src_xy.x = (coeff0 * element_x + coeff1 * element_y + coeff2) * weight;
+  src_xy.y = (coeff3 * element_x + coeff4 * element_y + coeff5) * weight;
 
   int src_x0 = floor(src_xy.x);
   int src_y0 = floor(src_xy.y);
@@ -416,11 +415,12 @@ void warpaffineLinearF32Kernel(global const float* src, int src_rows,
 }
 #endif
 
-#if defined(WARPAFFINE_NP_U8) || defined(ALL_KERNELS)
+#if defined(WARPPERSPECTIVE_NP_U8) || defined(ALL_KERNELS)
 __kernel
-void warpaffineNPU8Kernel(global const uchar* src, int src_rows, int src_cols,
+void warpperspectiveNPU8Kernel(global const uchar* src, int src_rows, int src_cols,
          int channels, int src_stride, float coeff0, float coeff1, float coeff2,
-         float coeff3, float coeff4, float coeff5, global uchar* dst,
+         float coeff3, float coeff4, float coeff5,
+         float coeff6, float coeff7, float coeff8, global uchar* dst, 
          int dst_rows, int dst_cols, int dst_stride,
          enum BorderType border_type, uchar border_value) {
   int element_x = get_global_id(0);
@@ -435,28 +435,29 @@ void warpaffineNPU8Kernel(global const uchar* src, int src_rows, int src_cols,
   int src_x = floor(src_xy.x);
   int src_y = floor(src_xy.y); */
 
-  // float2 src_xy;
+  float2 src_xy;
 
-  // float weight = coeffe6 * element_x + coeffe7 * element_y + coeffe8;
-  // weight = 1.f / weight;
+  float weight = coeff6 * element_x + coeff7 * element_y + coeff8;
+  weight = 1.f / weight;
 
-  // src_xy.x = (coeffe0 * element_x + coeffe1 * element_y + coeffe2) * weight;
-  // src_xy.y = (coeffe3 * element_x + coeffe4 * element_y + coeffe5) * weight;
+  src_xy.x = (coeff0 * element_x + coeff1 * element_y + coeff2) * weight + 0.5;
+  src_xy.y = (coeff3 * element_x + coeff4 * element_y + coeff5) * weight + 0.5;
 
-  // int src_x0 = floor(src_xy.x);
-  // int src_y0 = floor(src_xy.y);
+  int src_x = floor(src_xy.x);
+  int src_y = floor(src_xy.y);
 
-  int base_x = convert_int_sat_rte((coeff1 * element_y + coeff2) * AB_SCALE) +
-               ROUND_DELTA;
-  int base_y = convert_int_sat_rte((coeff4 * element_y + coeff5) * AB_SCALE) +
-               ROUND_DELTA;
-  int src_x = (convert_int_sat_rte(coeff0 * element_x * AB_SCALE) + base_x) >>
-              AB_BITS;
-  int src_y = (convert_int_sat_rte(coeff3 * element_x * AB_SCALE) + base_y) >>
-              AB_BITS;
-
-  int src_x = (convert_int_sat_rte((coeffe0 * element_x) * AB_SCALE) + 
-               convert_int_sat_rte((coeffe1 * element_y)))
+  // int weight = convert_int_sat_rte(coeff6 * AB_SCALE) * element_x;
+  // weight = weight + convert_int_sat_rte((coeff7) * AB_SCALE) * element_y + 
+  //          convert_int_sat_rte(coeff8 * AB_SCALE);
+  // int src_x = convert_int_sat_rte((coeff1) * AB_SCALE) * element_y +
+  //              convert_int_sat_rte(coeff2 * AB_SCALE);
+  // src_x = convert_int_sat_rte(coeff0 * AB_SCALE) * element_x + src_x;
+  // int src_y = convert_int_sat_rte((coeff4) * AB_SCALE) * element_y +
+  //              convert_int_sat_rte(coeff5 * AB_SCALE);
+  // src_y = convert_int_sat_rte(coeff3 * AB_SCALE) * element_x + src_y;
+  
+  // src_x = (src_x + ((weight + 1) >> 1)) / weight;
+  // src_y = (src_y + ((weight + 1) >> 1)) / weight;
 
   if (border_type == BORDER_CONSTANT) {
     if (src_x >= 0 && src_x < src_cols && src_y >= 0 && src_y < src_rows) {
@@ -548,11 +549,12 @@ void warpaffineNPU8Kernel(global const uchar* src, int src_rows, int src_cols,
 }
 #endif
 
-#if defined(WARPAFFINE_NP_F32) || defined(ALL_KERNELS)
+#if defined(WARPPERSPECTIVE_NP_F32) || defined(ALL_KERNELS)
 __kernel
-void warpaffineNPF32Kernel(global const float* src, int src_rows, int src_cols,
+void warpperspectiveNPF32Kernel(global const float* src, int src_rows, int src_cols,
          int channels, int src_stride, float coeff0, float coeff1, float coeff2,
-         float coeff3, float coeff4, float coeff5, global float* dst,
+         float coeff3, float coeff4, float coeff5,
+         float coeff6, float coeff7, float coeff8, global float* dst, 
          int dst_rows, int dst_cols, int dst_stride,
          enum BorderType border_type, float border_value) {
   int element_x = get_global_id(0);
@@ -567,14 +569,28 @@ void warpaffineNPF32Kernel(global const float* src, int src_rows, int src_cols,
   int src_x = floor(src_xy.x);
   int src_y = floor(src_xy.y); */
 
-  int base_x = convert_int_sat_rte((coeff1 * element_y + coeff2) * AB_SCALE) +
-               ROUND_DELTA;
-  int base_y = convert_int_sat_rte((coeff4 * element_y + coeff5) * AB_SCALE) +
-               ROUND_DELTA;
-  int src_x = (convert_int_sat_rte(coeff0 * element_x * AB_SCALE) + base_x) >>
-              AB_BITS;
-  int src_y = (convert_int_sat_rte(coeff3 * element_x * AB_SCALE) + base_y) >>
-              AB_BITS;
+  float2 src_xy;
+
+  float weight = coeff6 * element_x + coeff7 * element_y + coeff8;
+  weight = 1.f / weight;
+
+  src_xy.x = (coeff0 * element_x + coeff1 * element_y + coeff2) * weight + 0.5;
+  src_xy.y = (coeff3 * element_x + coeff4 * element_y + coeff5) * weight + 0.5;
+
+  int src_x = floor(src_xy.x);
+  int src_y = floor(src_xy.y);
+
+  // int weight = convert_int_sat_rte(coeff6 * element_x * AB_SCALE);
+  // weight = weight + convert_int_sat_rte((coeff7 * element_y + coeff8) * AB_SCALE);
+  // int src_x = convert_int_sat_rte((coeff1 * element_y + coeff2) * AB_SCALE) +
+  //              ROUND_DELTA;
+  // src_x = convert_int_sat_rte(coeff0 * element_x * AB_SCALE) + src_x;
+  // int src_y = convert_int_sat_rte((coeff4 * element_y + coeff5) * AB_SCALE) +
+  //              ROUND_DELTA;
+  // src_y = convert_int_sat_rte(coeff3 * element_x * AB_SCALE) + src_y;
+  
+  // src_x = src_x / weight;
+  // src_y = src_y / weight;
 
   if (border_type == BORDER_CONSTANT) {
     if (src_x >= 0 && src_x < src_cols && src_y >= 0 && src_y < src_rows) {
