@@ -105,8 +105,7 @@ namespace ocl {
  * @endcode
  */
 template <typename T, int channels>
-ppl::common::RetCode GaussianBlur(cl_context context, 
-                                  cl_command_queue queue,
+ppl::common::RetCode GaussianBlur(cl_command_queue queue,
                                   int height,
                                   int width,
                                   int inWidthStride,
@@ -115,6 +114,8 @@ ppl::common::RetCode GaussianBlur(cl_context context,
                                   float sigma,
                                   int outWidthStride,
                                   cl_mem outData,
+                                  cl_mem buffer,
+                                  cl_mem kernel,
                                   BorderType border_type = BORDER_DEFAULT);
 
 }  // namespace ocl

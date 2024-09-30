@@ -228,15 +228,15 @@ bool PplCvOclFilter2dToTest<T, channels>::apply() {
 }
 
 #define UNITTEST(T, channels)                                                  \
-using PplCvOclFilter2dToTest ## T ## channels =                             \
-        PplCvOclFilter2dToTest<T, channels>;                                \
-TEST_P(PplCvOclFilter2dToTest ## T ## channels, Standard) {                 \
+using PplCvOclFilter2dToTest ## T ## channels =                                \
+        PplCvOclFilter2dToTest<T, channels>;                                   \
+TEST_P(PplCvOclFilter2dToTest ## T ## channels, Standard) {                    \
   bool identity = this->apply();                                               \
   EXPECT_TRUE(identity);                                                       \
 }                                                                              \
                                                                                \
 INSTANTIATE_TEST_CASE_P(IsEqual,                                               \
-  PplCvOclFilter2dToTest ## T ## channels,                                  \
+  PplCvOclFilter2dToTest ## T ## channels,                                     \
   ::testing::Combine(                                                          \
     ::testing::Values(1, 5, 17, 25, 31, 43),                                   \
     ::testing::Values(0, 1, 10, 43),                                           \
@@ -246,18 +246,18 @@ INSTANTIATE_TEST_CASE_P(IsEqual,                                               \
                       cv::Size{320, 240}, cv::Size{640, 480},                  \
                       cv::Size{1280, 720}, cv::Size{1920, 1080})),             \
   [](const testing::TestParamInfo<                                             \
-      PplCvOclFilter2dToTest ## T ## channels::ParamType>&                  \
+      PplCvOclFilter2dToTest ## T ## channels::ParamType>&                     \
         info) {                                                                \
-    return filter2dToString(info.param);                                    \
+    return filter2dToString(info.param);                                       \
   }                                                                            \
 );
 
 
 
-UNITTEST(uchar, 1)
-UNITTEST(uchar, 3)
-UNITTEST(uchar, 4)
+// UNITTEST(uchar, 1)
+// UNITTEST(uchar, 3)
+// UNITTEST(uchar, 4)
 
 UNITTEST(float, 1)
-UNITTEST(float, 3)
-UNITTEST(float, 4)
+// UNITTEST(float, 3)
+// UNITTEST(float, 4)

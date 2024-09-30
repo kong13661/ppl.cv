@@ -28,13 +28,13 @@ using namespace ppl::common::ocl;
 
 #define F32DIV 2
 #define F32OFFSET 1
-#define U8DIV 4
-#define U8OFFSET 2
+#define U8DIV 2
+#define U8OFFSET 1
 
 #define F32DIV_CN 1
 #define F32OFFSET_CN 0
-#define U8DIV_CN 4
-#define U8OFFSET_CN 2
+#define U8DIV_CN 1
+#define U8OFFSET_CN 0
 
 namespace ppl {
 namespace cv {
@@ -64,14 +64,13 @@ namespace ocl {
                  "F32" #base_type #interpolate "C1Kernel",                    \
                  2, global_size, local_size, buffer, cols, rows, ksize_y >> 1,     \
                  rows*(int)sizeof(float), dst, dst_stride, ksize_y & 1, (int)normalize, weight);            \
-    clReleaseMemObject(buffer);                                               \
   }
 
 #define BOXFILTER_C1_TYPE(base_type, T)                                    \
   RetCode boxfilterC1##base_type(                                          \
       const cl_mem src, int rows, int cols, int src_stride, int ksize_x, int ksize_y,        \
-      bool normalize, cl_mem dst, int dst_stride, BorderType border_type,        \
-      cl_context context, cl_command_queue queue) {                           \
+      bool normalize, cl_mem dst, cl_mem buffer, int dst_stride, BorderType border_type,        \
+      cl_command_queue queue) {                           \
     PPL_ASSERT(src != nullptr);                                               \
     PPL_ASSERT(dst != nullptr);                                               \
     PPL_ASSERT(rows >= 1 && cols >= 1);                                       \
@@ -82,13 +81,6 @@ namespace ocl {
     PPL_ASSERT(border_type == BORDER_REPLICATE ||                             \
                border_type == BORDER_REFLECT ||                               \
                border_type == BORDER_REFLECT_101)                             \
-    cl_int error_code;                                                        \
-    cl_mem buffer =                                                           \
-        clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,    \
-                       cols * (int)sizeof(float) * rows * (int)sizeof(float), \
-                       NULL, &error_code);                                    \
-    CHECK_ERROR(error_code, clCreateBuffer);                                  \
-                                                                              \
     FrameChain* frame_chain = getSharedFrameChain();                          \
     frame_chain->setProjectName("cv");                                        \
     SET_PROGRAM_SOURCE(frame_chain, boxfilter);                            \
@@ -130,14 +122,13 @@ namespace ocl {
                  2, global_size, local_size, buffer, cols, rows, ksize_y >> 1, \
                  rows * (int)sizeof(float) * channels, dst, dst_stride,        \
                  ksize_y & 1, (int)normalize, weight);                         \
-    clReleaseMemObject(buffer);                                                \
   }
 
 #define BOXFILTER_CN_TYPE(base_type, T, channels)                       \
   RetCode boxfilterC##channels##base_type(                              \
       const cl_mem src, int rows, int cols, int src_stride, int ksize_x, int ksize_y,     \
-      bool normalize, cl_mem dst, int dst_stride, BorderType border_type,     \
-      cl_context context, cl_command_queue queue) {                        \
+      bool normalize, cl_mem dst, cl_mem buffer, int dst_stride, BorderType border_type,     \
+      cl_command_queue queue) {                        \
     PPL_ASSERT(src != nullptr);                                            \
     PPL_ASSERT(dst != nullptr);                                            \
     PPL_ASSERT(rows >= 1 && cols >= 1);                                    \
@@ -148,13 +139,6 @@ namespace ocl {
     PPL_ASSERT(border_type == BORDER_REPLICATE ||                          \
                border_type == BORDER_REFLECT ||                            \
                border_type == BORDER_REFLECT_101)                          \
-    cl_int error_code;                                                     \
-    cl_mem buffer = clCreateBuffer(                                        \
-        context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,                \
-        cols * (int)sizeof(float) * rows * (int)sizeof(float) * channels,  \
-        NULL, &error_code);                                                \
-    CHECK_ERROR(error_code, clCreateBuffer);                               \
-                                                                           \
     FrameChain* frame_chain = getSharedFrameChain();                       \
     frame_chain->setProjectName("cv");                                     \
     SET_PROGRAM_SOURCE(frame_chain, boxfilter);                         \
@@ -182,16 +166,16 @@ BOXFILTER_CN_TYPE(F32, float, 4)
 
 #define BOXFILTER_TYPE_C1_TEMPLATE(base_type, T)                           \
   template <>                                                                 \
-  RetCode BoxFilter<T, 1>(cl_context context, cl_command_queue queue,      \
+  RetCode BoxFilter<T, 1>(cl_command_queue queue,      \
                              int height, int width, int inWidthStride,        \
                              const cl_mem inData, int ksize_x, int ksize_y, bool normalize,     \
-                             int outWidthStride, cl_mem outData, \
+                             int outWidthStride, cl_mem outData, cl_mem buffer, \
                              BorderType border_type) {                        \
     inWidthStride *= sizeof(T);                                               \
     outWidthStride *= sizeof(T);                                              \
     RetCode code = boxfilterC1##base_type(                                 \
-        inData, height, width, inWidthStride, ksize_x, ksize_y, normalize, outData,          \
-        outWidthStride, border_type, context, queue);                  \
+        inData, height, width, inWidthStride, ksize_x, ksize_y, normalize, outData, buffer,          \
+        outWidthStride, border_type, queue);                  \
                                                                               \
     return code;                                                              \
   }
@@ -199,15 +183,15 @@ BOXFILTER_CN_TYPE(F32, float, 4)
 #define BOXFILTER_TYPE_CN_TEMPLATE(base_type, T, channels)            \
   template <>                                                            \
   RetCode BoxFilter<T, channels>(                                     \
-      cl_context context, cl_command_queue queue, int height, int width, \
+      cl_command_queue queue, int height, int width, \
       int inWidthStride, const cl_mem inData, int ksize_x, int ksize_y, bool normalize,    \
-      int outWidthStride, cl_mem outData,                   \
+      int outWidthStride, cl_mem outData, cl_mem buffer,                   \
       BorderType border_type) {                                          \
     inWidthStride *= sizeof(T);                                          \
     outWidthStride *= sizeof(T);                                         \
     RetCode code = boxfilterC##channels##base_type(                   \
-        inData, height, width, inWidthStride, ksize_x, ksize_y, normalize, outData,     \
-        outWidthStride, border_type, context, queue);             \
+        inData, height, width, inWidthStride, ksize_x, ksize_y, normalize, outData, buffer,     \
+        outWidthStride, border_type, queue);             \
                                                                          \
     return code;                                                         \
   }

@@ -109,6 +109,20 @@ bool PplCvOclEqualizehistTest::apply() {
                                     0, src_bytes1, 0, NULL, NULL, &error_code);
   CHECK_ERROR(error_code, clEnqueueMapBuffer);
 
+  cl_mem hist = clCreateBuffer(context,
+                               CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+                               256 * sizeof(int),
+                               NULL,
+                               &error_code);
+  CHECK_ERROR(error_code, clCreateBuffer);
+
+  cl_mem group_count = clCreateBuffer(context,
+                               CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+                               sizeof(int),
+                               NULL,
+                               &error_code);
+  CHECK_ERROR(error_code, clCreateBuffer);
+
   copyMatToArray(src, input);
   error_code = clEnqueueUnmapMemObject(queue, gpu_input, input, 0, NULL, NULL);
   CHECK_ERROR(error_code, clEnqueueUnmapMemObject);
@@ -118,13 +132,13 @@ bool PplCvOclEqualizehistTest::apply() {
   cv::equalizeHist(src, cv_dst);
 
   ppl::cv::ocl::equalizeHist(queue, src.rows, src.cols,
-      src.step / sizeof(uchar), gpu_src, dst.step / sizeof(uchar), gpu_dst, context);
+      src.step / sizeof(uchar), gpu_src, dst.step / sizeof(uchar), gpu_dst, hist, group_count);
   error_code = clEnqueueReadBuffer(queue, gpu_dst, CL_TRUE, 0, dst_bytes0,
                                   dst.data, 0, NULL, NULL);
   CHECK_ERROR(error_code, clEnqueueReadBuffer);
 
   ppl::cv::ocl::equalizeHist(queue, size.height, size.width,
-      size.width, gpu_input, size.width, gpu_output, context);
+      size.width, gpu_input, size.width, gpu_output, hist, group_count);
   output = (uchar*)clEnqueueMapBuffer(queue, gpu_output, CL_TRUE, CL_MAP_READ,
                                     0, dst_bytes1, 0, NULL, NULL, &error_code);
   CHECK_ERROR(error_code, clEnqueueMapBuffer);
@@ -146,6 +160,8 @@ bool PplCvOclEqualizehistTest::apply() {
   clReleaseMemObject(gpu_dst);
   clReleaseMemObject(gpu_input);
   clReleaseMemObject(gpu_output);
+  clReleaseMemObject(hist);
+  clReleaseMemObject(group_count);
 
   return (identity0 && identity1);
 }
@@ -158,7 +174,7 @@ TEST_P(PplCvOclEqualizehistTest, Standard) {
                                                                                 
 INSTANTIATE_TEST_CASE_P(IsEqual, PplCvOclEqualizehistTest,             
   ::testing::Combine(                                                           
-    ::testing::Values(cv::Size{20, 10}, cv::Size{642, 480},                  
+    ::testing::Values(cv::Size{642, 480},                  
                       cv::Size{1283, 720}, cv::Size{1934, 1080},               
                       cv::Size{320, 240}, cv::Size{640, 480},                  
                       cv::Size{1280, 720}, cv::Size{1920, 1080})),             

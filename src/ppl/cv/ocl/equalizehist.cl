@@ -16,6 +16,13 @@
 
 /******************************* crop operation *******************************/
 
+__kernel void equalizeHistKernel(global int* hist, global uint* group_count){
+    int element_x = get_global_id(0);
+    hist[element_x] = 0;
+    group_count[0] = 0;
+}
+
+
 __kernel void equalizeHistKernel0(global const uchar* src, const int cols, 
     global int* hist, global uint* group_count) {
     int element_x = get_global_id(0);

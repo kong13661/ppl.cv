@@ -114,7 +114,7 @@ ppl::common::RetCode Integral(cl_command_queue queue,
                                      int outWidth,
                                      int outWidthStride,
                                      cl_mem outData,
-                                     cl_context context);
+                                     cl_mem buffer);
 
 }  // namespace ocl
 }  // namespace cv

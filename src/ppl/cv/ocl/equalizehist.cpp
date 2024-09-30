@@ -32,8 +32,8 @@ namespace ocl {
 #define MAX_BLOCKS 128
 
 RetCode equalizehist(const cl_mem src, int rows, int cols,
-              int src_stride, cl_mem dst, int dst_stride,
-              cl_command_queue queue, cl_context context) {
+              int src_stride, cl_mem dst, cl_mem hist, cl_mem group_count, int dst_stride,
+              cl_command_queue queue) {
   PPL_ASSERT(src != nullptr);
   PPL_ASSERT(dst != nullptr);
   PPL_ASSERT(rows >= 1 && cols >= 1);
@@ -48,31 +48,9 @@ RetCode equalizehist(const cl_mem src, int rows, int cols,
   cols = divideUp(columns, 4, 2);
   size_t local_size[2];
   size_t global_size[2];
-  cl_int error_code = 0;
-  cl_mem hist = clCreateBuffer(context,
-                               CL_MEM_READ_WRITE | CL_MEM_HOST_WRITE_ONLY,
-                               256 * sizeof(int),
-                               NULL,
-                               &error_code);
-  CHECK_ERROR(error_code, clCreateBuffer);
-  int *hist_host = (int *)clEnqueueMapBuffer(queue, hist, CL_TRUE, CL_MAP_WRITE, 0, 256 * sizeof(int),
-                                      0, NULL, NULL, &error_code);
-  CHECK_ERROR(error_code, clEnqueueMapBuffer);
-  memset(hist_host, 0, 256 * sizeof(int));
-  error_code = clEnqueueUnmapMemObject(queue, hist, hist_host, 0, NULL, NULL);
-  CHECK_ERROR(error_code, clEnqueueUnmapMemObject);
+  global_size[0] = 256;
 
-  cl_mem group_count = clCreateBuffer(context,
-                               CL_MEM_READ_WRITE | CL_MEM_HOST_WRITE_ONLY,
-                               sizeof(int),
-                               NULL,
-                               &error_code);
-  CHECK_ERROR(error_code, clCreateBuffer);
-  int zero = 0;
-  error_code = clEnqueueWriteBuffer(queue, group_count, CL_FALSE, 0, sizeof(int),
-                                    &zero, 0, NULL, NULL);
-  CHECK_ERROR(error_code, clEnqueueWriteBuffer);
-
+  runOclKernel(frame_chain, "equalizeHistKernel", 1, global_size, global_size, hist, group_count);
   if (src_stride == columns && dst_stride == columns) {
     columns *= rows;
     local_size[0]  = 256;
@@ -100,8 +78,6 @@ RetCode equalizehist(const cl_mem src, int rows, int cols,
     runOclKernel(frame_chain, "equalizeHistKernel11", 2, global_size, local_size, src,
                 src_stride, rows, columns, dst, dst_stride, hist);
   }
-  clReleaseMemObject(hist);
-  clReleaseMemObject(group_count);
   return RC_SUCCESS;
 }
 
@@ -113,10 +89,11 @@ RetCode equalizeHist(cl_command_queue queue,
                 const cl_mem inData,
                 int outWidthStride,
                 cl_mem outData,
-                cl_context context
+                cl_mem hist,
+                cl_mem group_count
                 ) {
   RetCode code = equalizehist(inData, height, width, inWidthStride, 
-                          outData, outWidthStride, queue, context);
+                          outData, hist, group_count, outWidthStride, queue);
   return code;
 }
 

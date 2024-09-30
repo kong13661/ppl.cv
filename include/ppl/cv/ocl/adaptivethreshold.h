@@ -104,8 +104,7 @@ namespace ocl {
  * }
  * @endcode
  */
-ppl::common::RetCode AdaptiveThreshold(cl_context context, 
-                                       cl_command_queue queue,
+ppl::common::RetCode AdaptiveThreshold(cl_command_queue queue,
                                        int height,
                                        int width,
                                        int inWidthStride,

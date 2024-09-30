@@ -29,8 +29,8 @@ using namespace ppl::common::ocl;
 #define U8DIV 4
 #define U8OFFSET 2
 
-#define F32DIV_CN 1
-#define F32OFFSET_CN 0
+#define F32DIV_CN 2
+#define F32OFFSET_CN 1
 #define U8DIV_CN 4
 #define U8OFFSET_CN 2
 
@@ -71,7 +71,7 @@ namespace ocl {
     size_t local_size[] = {kBlockDimX0, kBlockDimY0};                          \
     size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};         \
                                                                                \
-    frame_chain->setCompileOptions("-D DEGREE" #degree "_" #base_type "1C");   \
+    frame_chain->setCompileOptions("-D ROTATE" #degree "_" #base_type "C1");   \
     runOclKernel(frame_chain, "rotateC1" #degree #base_type "Kernel", 2,       \
                  global_size, local_size, src, src_rows, src_cols, src_stride, \
                  dst, dst_stride);                                             \
@@ -102,7 +102,7 @@ namespace ocl {
     size_t local_size[] = {kBlockDimX0, kBlockDimY0};                          \
     size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};         \
                                                                                \
-    frame_chain->setCompileOptions("-D DEGREE" #degree "_" #base_type "C" #channels);   \
+    frame_chain->setCompileOptions("-D ROTATE" #degree "_" #base_type "C" #channels);   \
     runOclKernel(frame_chain, "rotateC"#channels #degree #base_type "Kernel", 2,       \
                  global_size, local_size, src, src_rows, src_cols, src_stride, \
                  dst, dst_stride);                                             \
@@ -157,30 +157,12 @@ DEGREE_CN_TYPE(F32, float, 270, 4)
     return code;                                                            \
   }
 
-// #define DEGREE_TYPE_CN_TEMPLATE(base_type, T, channels)                     \
-//   template <>                                                                  \
-//   RetCode Rotate<T, channels>(cl_command_queue queue, int height, int width,\
-//                           int inWidthStride, const cl_mem inData,              \
-//                           int outWidthStride, cl_mem outData) {                \
-//     inWidthStride *= sizeof(T);                                                \
-//     outWidthStride *= sizeof(T);                                               \
-//     RetCode code = rotateC##channels##base_type(                            \
-//         inData, height, width, inWidthStride, outData, outWidthStride, queue); \
-//                                                                                \
-//     return code;                                                               \
-//   }
-
 DEGREE_TYPE_TEMPLATE(U8, 1, uchar)
 DEGREE_TYPE_TEMPLATE(F32, 1, float)
 DEGREE_TYPE_TEMPLATE(U8, 3, uchar)
 DEGREE_TYPE_TEMPLATE(F32, 3, float)
 DEGREE_TYPE_TEMPLATE(U8, 4, uchar)
 DEGREE_TYPE_TEMPLATE(F32, 4, float)
-
-// DEGREE_TYPE_CN_TEMPLATE(U8, uchar, 3)
-// DEGREE_TYPE_CN_TEMPLATE(U8, uchar, 4)
-// DEGREE_TYPE_CN_TEMPLATE(F32, float, 3)
-// DEGREE_TYPE_CN_TEMPLATE(F32, float, 4)
 
 
 }  // namespace ocl

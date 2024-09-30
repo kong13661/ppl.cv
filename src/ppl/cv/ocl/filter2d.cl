@@ -17,6 +17,9 @@
 #include "kerneltypes.h"
 
 #define convert_float_sat convert_float
+#define convert_float2_sat convert_float2
+#define convert_float3_sat convert_float3
+#define convert_float4_sat convert_float4
 
 #define FILTER2DC1KERNEL(base_type, T, interpolation)                             \
 __kernel void filter2D##base_type##C1##interpolation##Kernel(                     \
@@ -48,30 +51,30 @@ __kernel void filter2D##base_type##C1##interpolation##Kernel(                   
   if (isnt_border_block) {                                                        \
     for (int i = origin_y; i <= top_y; i++) {                                     \
       data_index = interpolation(rows, radius, i);                                \
-      input = (const global T*)((uchar*)src + data_index * src_stride);             \
+      input = (const global T*)((uchar*)src + data_index * src_stride);           \
       input = input + origin_x;                                                   \
       for (int j = origin_x; j <= top_x; j++) {                                   \
-        value = vload4(0, input);                                                   \
-        sum = sum + convert_float(value) * src_kernel[kernel_index];              \
+        value = vload4(0, input);                                                 \
+        sum = sum + convert_float4(value) * src_kernel[kernel_index];              \
         kernel_index++;                                                           \
-        input++;                                                          \
+        input++;                                                                  \
       }                                                                           \
     }                                                                             \
   }                                                                               \
   else {                                                                          \
     for (int i = origin_y; i <= top_y; i++) {                                     \
       data_index = interpolation(rows, radius, i);                                \
-      input = (const global T*)((uchar*)src + data_index * src_stride);             \
+      input = (const global T*)((uchar*)src + data_index * src_stride);           \
       for (int j = origin_x; j <= top_x; j++) {                                   \
         data_index = interpolation(cols, radius, j);                              \
-        value.x = input[data_index];                                                \
+        value.x = input[data_index];                                              \
         data_index = interpolation(cols, radius, j + 1);                          \
-        value.y = input[data_index];                                                \
+        value.y = input[data_index];                                              \
         data_index = interpolation(cols, radius, j + 2);                          \
-        value.z = input[data_index];                                                \
+        value.z = input[data_index];                                              \
         data_index = interpolation(cols, radius, j + 3);                          \
-        value.w = input[data_index];                                                \
-        sum = sum + convert_float(value) * src_kernel[kernel_index];              \
+        value.w = input[data_index];                                              \
+        sum = sum + convert_float4(value) * src_kernel[kernel_index];              \
         kernel_index++;                                                           \
       }                                                                           \
     }                                                                             \
@@ -83,7 +86,7 @@ __kernel void filter2D##base_type##C1##interpolation##Kernel(                   
   dst = (global T*)((uchar*)dst + element_y * dst_stride);                        \
   if (element_x < cols - 3) {                                                     \
     dst = dst + element_x;                                                        \
-    vstore4(convert_##T##_sat(sum), 0, dst);                                      \
+    vstore4(convert_##T##4##_sat(sum), 0, dst);                                      \
   }                                                                               \
   else {                                                                          \
     dst[element_x] = convert_##T##_sat(sum.x);                                    \
@@ -129,10 +132,10 @@ __kernel void filter2D##base_type##C##channels##interpolation##Kernel(          
   if (isnt_border_block) {                                                        \
     for (int i = origin_y; i <= top_y; i++) {                                     \
       data_index = interpolation(rows, radius, i);                                \
-      input = (const global T*)((uchar*)src + data_index * src_stride);             \
+      input = (const global T*)((uchar*)src + data_index * src_stride);           \
       for (int j = origin_x; j <= top_x; j++) {                                   \
         value = vload##channels(j, input);                                        \
-        sum = sum + convert_float(value) * src_kernel[kernel_index];              \
+        sum = sum + convert_float##channels(value) * src_kernel[kernel_index];              \
         kernel_index++;                                                           \
       }                                                                           \
     }                                                                             \
@@ -140,20 +143,20 @@ __kernel void filter2D##base_type##C##channels##interpolation##Kernel(          
   else {                                                                          \
     for (int i = origin_y; i <= top_y; i++) {                                     \
       data_index = interpolation(rows, radius, i);                                \
-      input = (const global T*)((uchar*)src + data_index * src_stride);             \
+      input = (const global T*)((uchar*)src + data_index * src_stride);           \
       for (int j = origin_x; j <= top_x; j++) {                                   \
         data_index = interpolation(cols, radius, j);                              \
-        value = vload##channels(data_index, input);                                        \
-        sum = sum + convert_float(value) * src_kernel[kernel_index];              \
+        value = vload##channels(data_index, input);                               \
+        sum = sum + convert_float##channels(value) * src_kernel[kernel_index];              \
         kernel_index++;                                                           \
       }                                                                           \
     }                                                                             \
   }                                                                               \
   if (delta != 0.f) {                                                             \
-    sum += (float##channels)delta;                                                                 \
+    sum += (float##channels)delta;                                                \
   }                                                                               \
   dst = (global T*)((uchar*)dst + element_y * dst_stride);                        \
-  vstore##channels(convert_##T##_sat(sum), element_x, dst);                                \
+  vstore##channels(convert_##T##channels##_sat(sum), element_x, dst);                       \
 }
 
 

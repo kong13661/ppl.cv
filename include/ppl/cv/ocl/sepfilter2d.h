@@ -105,8 +105,7 @@ namespace ocl {
  * @endcode
  */
 template <typename Tsrc, typename Tdst, int channels>
-ppl::common::RetCode SepFilter2D(cl_context context, 
-                                 cl_command_queue queue,
+ppl::common::RetCode SepFilter2D(cl_command_queue queue,
                                  int height,
                                  int width,
                                  int inWidthStride,
@@ -116,6 +115,7 @@ ppl::common::RetCode SepFilter2D(cl_context context,
                                  const cl_mem kernelY,
                                  int outWidthStride,
                                  cl_mem outData,
+                                 cl_mem buffer,
                                  float delta = 0.f,
                                  BorderType border_type = BORDER_DEFAULT);
 

@@ -39,8 +39,8 @@ namespace ocl {
 #define INTEGRAL_TYPE(src_base_type, Tsrc, dst_base_type, Tdst)                          \
   RetCode integral##src_base_type##dst_base_type(                                        \
       const cl_mem src, int src_rows, int src_cols,                                      \
-      int src_stride, cl_mem dst, int dst_rows, int dst_cols, int dst_stride,            \
-      cl_command_queue queue, cl_context context) {                                      \
+      int src_stride, cl_mem dst, cl_mem integral_tmp, int dst_rows, int dst_cols, int dst_stride,            \
+      cl_command_queue queue) {                                      \
     PPL_ASSERT(src != nullptr);                                                          \
     PPL_ASSERT(dst != nullptr);                                                          \
     PPL_ASSERT(src_rows >= 1 && src_cols >= 1);                                          \
@@ -50,29 +50,24 @@ namespace ocl {
     PPL_ASSERT(src_stride >= src_cols * (int)sizeof(Tsrc));                              \
     PPL_ASSERT(dst_stride >= dst_cols * (int)sizeof(Tdst));                              \
                                                                                          \
-    cl_int error_code = 0;                                                               \
-    cl_mem integral_tmp = clCreateBuffer(context,                                        \
-                                         CL_MEM_READ_WRITE | CL_MEM_HOST_WRITE_ONLY,     \
-                                         dst_rows * dst_cols * sizeof(Tdst), NULL,       \
-                                         &error_code);                                   \
-    CHECK_ERROR(error_code, clCreateBuffer);                                             \
-    Tdst* integral_tmp_input = (Tdst*)clEnqueueMapBuffer(queue, integral_tmp,            \
-                                                     CL_TRUE, CL_MAP_WRITE, 0,           \
-                                                     dst_rows * dst_cols * sizeof(Tdst), \
-                                                     0, NULL, NULL, &error_code);        \
-    CHECK_ERROR(error_code, clEnqueueMapBuffer);                                         \
-    memset(integral_tmp_input, 0, dst_rows * dst_cols * sizeof(Tdst));                   \
-    clEnqueueUnmapMemObject(queue, integral_tmp, integral_tmp_input, 0, NULL, NULL);     \
-                                                                                         \
-    FrameChain* frame_chain = getSharedFrameChain();                                     \
-    frame_chain->setProjectName("cv");                                                   \
-    SET_PROGRAM_SOURCE(frame_chain, integral);                                           \
                                                                                          \
     size_t local_size[] = {BLOCK_X};                                                     \
     size_t global_size[] = {(size_t)(divideUp(src_rows,                                  \
                                               dst_base_type##DIV,                        \
                                               dst_base_type##OFFSET) * BLOCK_X)};        \
+    FrameChain* frame_chain = getSharedFrameChain();                                     \
+    frame_chain->setProjectName("cv");                                                   \
+    SET_PROGRAM_SOURCE(frame_chain, integral);                                           \
+    global_size[0] = divideUp(dst_rows * dst_cols, 2, 1);\
+    local_size[0] = 128;\
+    runOclKernel(frame_chain, "setZero" #dst_base_type, 1,      \
+                 global_size, local_size, integral_tmp, dst_rows * dst_rows);        \
                                                                                          \
+                                                                                         \
+    local_size[0] = BLOCK_X;\
+    global_size[0] = (size_t)(divideUp(src_rows,                                         \
+                                       dst_base_type##DIV,                               \
+                                       dst_base_type##OFFSET) * BLOCK_X);                \
     frame_chain->setCompileOptions("-D CROP_" #src_base_type);                           \
     runOclKernel(frame_chain, "integral" #src_base_type #dst_base_type "Kernel", 1,      \
                  global_size, local_size, src, src_rows, src_cols, src_stride,           \
@@ -85,7 +80,6 @@ namespace ocl {
                  global_size, local_size, integral_tmp, dst_cols, dst_rows,              \
                  dst_rows * (int)sizeof(Tdst), dst, dst_rows, dst_cols, dst_stride);     \
                                                                                          \
-    clReleaseMemObject(integral_tmp);                                                    \
     return RC_SUCCESS;                                                                   \
   }
 
@@ -103,11 +97,11 @@ RetCode Integral<Tsrc, Tdst>(cl_command_queue queue,                            
                              int outWidth,                                               \
                              int outWidthStride,                                         \
                              cl_mem outData,                                             \
-                             cl_context context) {                                       \
+                             cl_mem buffer) {                                       \
   inWidthStride *= sizeof(Tsrc);                                                         \
   outWidthStride *= sizeof(Tdst);                                                        \
   RetCode code = integral##src_base_type##dst_base_type(inData, inHeight, inWidth,       \
-   inWidthStride, outData, outHeight, outWidth, outWidthStride, queue, context);         \
+   inWidthStride, outData, buffer, outHeight, outWidth, outWidthStride, queue);         \
                                                                                          \
   return code;                                                                           \
 }

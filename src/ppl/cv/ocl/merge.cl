@@ -27,7 +27,7 @@
     T input_value0 = src0[element_x];                                   \
     T input_value1 = src1[element_x];                                   \
     T input_value2 = src2[element_x];                                   \
-    T##3 output_value = {input_value0, input_value1, input_value2};     \
+    T##3 output_value = (T##3)(input_value0, input_value1, input_value2);     \
     vstore3(output_value, element_x, dst);                              \
   }
 #endif
@@ -51,7 +51,7 @@
     T input_value0 = src0[element_x];                                          \
     T input_value1 = src1[element_x];                                          \
     T input_value2 = src2[element_x];                                          \
-    T##3 output_value = {input_value0, input_value1, input_value2};            \
+    T##3 output_value = (T##3)(input_value0, input_value1, input_value2);            \
     vstore3(output_value, element_x, dst);                                     \
   }
 #endif
@@ -71,8 +71,8 @@
     T input_value1 = src1[index_x];                                     \
     T input_value2 = src2[index_x];                                     \
     T input_value3 = src3[index_x];                                     \
-    T##4 output_value = {input_value0, input_value1, input_value2,      \
-                         input_value3};                                 \
+    T##4 output_value = (T##4)(input_value0, input_value1, input_value2,      \
+                         input_value3);                                 \
     vstore4(output_value, element_x, dst);                              \
   }
 #endif
@@ -99,8 +99,8 @@
     T input_value1 = src1[element_x];                                   \
     T input_value2 = src2[element_x];                                   \
     T input_value3 = src3[element_x];                                   \
-    T##4 output_value = {input_value0, input_value1, input_value2,      \
-                         input_value3};                                 \
+    T##4 output_value = (T##4)(input_value0, input_value1, input_value2,      \
+                         input_value3);                                 \
     vstore4(output_value, element_x, dst);                              \
   }
 #endif

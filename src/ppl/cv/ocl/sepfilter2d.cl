@@ -73,7 +73,7 @@
     SEPFILTER2D_ELEMENT##i(T, src_array, output, j)                     \
     for (int k = 0; k < i; k++) {                                       \
       vstore##j(output[k], element_y, dst);                             \
-      dst = (global T*)((uchar*)dst + dst_stride);                      \
+      dst = (global T*)((global uchar*)dst + dst_stride);                      \
     }                                                                   \
   }
 
@@ -83,7 +83,7 @@
     SEPFILTER2D_ELEMENT##i(T, src_array, output, j)                       \
     for (int k = 0; k < i; k++) {                                         \
       VSTORE_REMAIN_ROWS##j(output[k], rows_load)                         \
-      dst = (global T*)((uchar*)dst + dst_stride);                        \
+      dst = (global T*)((global uchar*)dst + dst_stride);                        \
     }                                                                     \
   }
 
@@ -175,7 +175,7 @@
       return;                                                                \
     }                                                                        \
                                                                              \
-    src = (global const Tsrc*)((uchar*)src + index_y * src_stride);          \
+    src = (global const Tsrc*)((global uchar*)src + index_y * src_stride);          \
     int remain_cols = cols - index_x, remain_rows = rows - index_y;          \
     int bottom = index_x - radius;                                           \
     int top = index_x + radius;                                              \
@@ -188,22 +188,22 @@
                                                                              \
     float##cols_load input_value[rows_load];                                 \
     bool isnt_border_block = true;                                           \
-    data_index = radius / (get_local_size(0) * cols_load);                   \
+    data_index = radius / (get_local_size(0)) / cols_load;                   \
     if (group_x <= data_index)                                               \
       isnt_border_block = false;                                             \
-    data_index = (cols - radius) / (get_local_size(0) * cols_load);          \
+    data_index = (cols - radius) / (get_local_size(0)) / cols_load;          \
     if (group_x >= data_index)                                               \
       isnt_border_block = false;                                             \
                                                                              \
     global const Tsrc* src_temp;                                             \
     for (int i = 0; i < min(remain_rows, rows_load); i++) {                  \
-      input_value[i] = (float##cols_load)(0);                                \
+      ((float##cols_load*)input_value+i)[0] = (float##cols_load)(0);                                \
       src_temp = src;                                                        \
       filter_kernel_index = 0;                                               \
       if (isnt_border_block) {                                               \
         src_temp += bottom;                                                  \
         for (int j = bottom; j <= top; j++) {                                \
-          input_value[i] +=                                                  \
+          ((float##cols_load*)input_value+i)[0] +=                                                  \
               convert_float##cols_load(vload##cols_load(0, src_temp)) *      \
               filter_kernel[filter_kernel_index];                            \
           src_temp += 1;                                                     \
@@ -214,19 +214,19 @@
         float##cols_load value;                                              \
         for (int j = bottom; j <= top; j++) {                                \
           READ_BOARDER##cols_load(interpolation);                            \
-          input_value[i] += value * filter_kernel[filter_kernel_index];      \
+          ((float##cols_load*)input_value+i)[0] += value * filter_kernel[filter_kernel_index];      \
           filter_kernel_index++;                                             \
         }                                                                    \
       }                                                                      \
-      src = (global const Tsrc*)((uchar*)src + src_stride);                  \
+      src = (global const Tsrc*)((global uchar*)src + src_stride);                  \
     }                                                                        \
     if (delta != 0.f) {                                                      \
       for (int i = 0; i < min(remain_rows, rows_load); i++) {                \
-        input_value[i] += delta;                                             \
+        ((float##cols_load*)input_value+i)[0] += delta;                                             \
       }                                                                      \
     }                                                                        \
                                                                              \
-    dst = (global Tdst*)((uchar*)dst + dst_stride * index_x);                \
+    dst = (global Tdst*)((global uchar*)dst + dst_stride * index_x);                \
     SEPFILTER2D_C1_RAMAIN_COL##rows_load(Tdst, cols_load, rows_load)         \
   }
 // #endif
@@ -279,7 +279,7 @@
       return;                                                                        \
     }                                                                                \
                                                                                      \
-    src = (global const Tsrc*)((uchar*)src + index_y * src_stride);                  \
+    src = (global const Tsrc*)((global uchar*)src + index_y * src_stride);                  \
     int remain_rows = rows - index_y;                                                \
     int bottom = index_x - radius;                                                   \
     int top = index_x + radius;                                                      \
@@ -302,10 +302,10 @@
                                                                                      \
     for (int i = 0; i < min(remain_rows, rows_load); i++) {                          \
       filter_kernel_index = 0;                                                       \
-      input_value[i] = (float##channels)(0);                                         \
+      ((float##channels*)input_value+i)[0] = (float##channels)(0);                                         \
       if (isnt_border_block) {                                                       \
         for (int j = bottom; j <= top; j++) {                                        \
-          input_value[i] += convert_float##channels(vload##channels(j, src)) *       \
+          ((float##channels*)input_value+i)[0] += convert_float##channels(vload##channels(j, src)) *       \
                             filter_kernel[filter_kernel_index];                      \
           filter_kernel_index++;                                                     \
         }                                                                            \
@@ -313,67 +313,78 @@
       else {                                                                         \
         for (int j = bottom; j <= top; j++) {                                        \
           data_index = interpolation(cols, radius, j);                               \
-          input_value[i] +=                                                          \
+          ((float##channels*)input_value+i)[0] +=                                                          \
               convert_float##channels(vload##channels(data_index, src)) *            \
               filter_kernel[filter_kernel_index];                                    \
           filter_kernel_index++;                                                     \
         }                                                                            \
       }                                                                              \
-      src = (global const Tsrc*)((uchar*)src + src_stride);                          \
+      src = (global const Tsrc*)((global uchar*)src + src_stride);                          \
     }                                                                                \
                                                                                      \
     if (delta != 0.f) {                                                              \
       for (int i = 0; i < min(remain_rows, rows_load); i++) {                        \
-        input_value[i] += delta;                                                     \
+        ((float##channels*)input_value+i)[0] += delta;                                                     \
       }                                                                              \
     }                                                                                \
                                                                                      \
-    dst = (global Tdst*)((uchar*)dst + dst_stride * index_x);                        \
+    dst = (global Tdst*)((global uchar*)dst + dst_stride * index_x);                        \
     SEPFILTER2D_SAVE_CHANNEL##rows_load(Tdst, rows_load, channels)                   \
   }
 // #endif
 
 
-
+#if defined(interpolateReplicateBorder_SEP_C1) || defined(ALL_KERNELS)
 SEPFILTER2D_KERNEL_C1_TYPE(F32, float, U8, uchar, 4, 4, interpolateReplicateBorder)
 SEPFILTER2D_KERNEL_C1_TYPE(U8, uchar, F32, float, 2, 2, interpolateReplicateBorder)
 SEPFILTER2D_KERNEL_C1_TYPE(F32, float, F32, float, 2, 2, interpolateReplicateBorder)
+#endif
+
+#if defined(interpolateReflectBorder_SEP_C1) || defined(ALL_KERNELS)
 SEPFILTER2D_KERNEL_C1_TYPE(F32, float, U8, uchar, 4, 4, interpolateReflectBorder)
 SEPFILTER2D_KERNEL_C1_TYPE(U8, uchar, F32, float, 2, 2, interpolateReflectBorder)
 SEPFILTER2D_KERNEL_C1_TYPE(F32, float, F32, float, 2, 2, interpolateReflectBorder)
+#endif
+
+#if defined(interpolateReflect101Border_SEP_C1) || defined(ALL_KERNELS)
 SEPFILTER2D_KERNEL_C1_TYPE(F32, float, U8, uchar, 4, 4, interpolateReflect101Border)
 SEPFILTER2D_KERNEL_C1_TYPE(U8, uchar, F32, float, 2, 2, interpolateReflect101Border)
 SEPFILTER2D_KERNEL_C1_TYPE(F32, float, F32, float, 2, 2, interpolateReflect101Border)
+#endif
 
+#if defined(interpolateReplicateBorder_SEP_C3) || defined(ALL_KERNELS)
 SEPFILTER2D_KERNEL_CN_TYPE(U8, uchar, F32, float, 3, 1, interpolateReplicateBorder)
 SEPFILTER2D_KERNEL_CN_TYPE(F32, float, U8, uchar, 3, 4, interpolateReplicateBorder)
 SEPFILTER2D_KERNEL_CN_TYPE(F32, float, F32, float, 3, 1, interpolateReplicateBorder)
+#endif
+
+
+#if defined(interpolateReflectBorder_SEP_C3) || defined(ALL_KERNELS)
 SEPFILTER2D_KERNEL_CN_TYPE(U8, uchar, F32, float, 3, 1, interpolateReflectBorder)
 SEPFILTER2D_KERNEL_CN_TYPE(F32, float, U8, uchar, 3, 4, interpolateReflectBorder)
 SEPFILTER2D_KERNEL_CN_TYPE(F32, float, F32, float, 3, 1, interpolateReflectBorder)
+#endif
+
+#if defined(interpolateReflect101Border_SEP_C3) || defined(ALL_KERNELS)
 SEPFILTER2D_KERNEL_CN_TYPE(U8, uchar, F32, float, 3, 1, interpolateReflect101Border)
 SEPFILTER2D_KERNEL_CN_TYPE(F32, float, U8, uchar, 3, 4, interpolateReflect101Border)
 SEPFILTER2D_KERNEL_CN_TYPE(F32, float, F32, float, 3, 1, interpolateReflect101Border)
+#endif
 
+#if defined(interpolateReplicateBorder_SEP_C4) || defined(ALL_KERNELS)
 SEPFILTER2D_KERNEL_CN_TYPE(U8, uchar, F32, float, 4, 1, interpolateReplicateBorder)
 SEPFILTER2D_KERNEL_CN_TYPE(F32, float, U8, uchar, 4, 4, interpolateReplicateBorder)
 SEPFILTER2D_KERNEL_CN_TYPE(F32, float, F32, float, 4, 1, interpolateReplicateBorder)
+#endif
+
+#if defined(interpolateReflectBorder_SEP_C4) || defined(ALL_KERNELS)
 SEPFILTER2D_KERNEL_CN_TYPE(U8, uchar, F32, float, 4, 1, interpolateReflectBorder)
 SEPFILTER2D_KERNEL_CN_TYPE(F32, float, U8, uchar, 4, 4, interpolateReflectBorder)
 SEPFILTER2D_KERNEL_CN_TYPE(F32, float, F32, float, 4, 1, interpolateReflectBorder)
+#endif
+
+#if defined(interpolateReflect101Border_SEP_C4) || defined(ALL_KERNELS)
 SEPFILTER2D_KERNEL_CN_TYPE(U8, uchar, F32, float, 4, 1, interpolateReflect101Border)
 SEPFILTER2D_KERNEL_CN_TYPE(F32, float, U8, uchar, 4, 4, interpolateReflect101Border)
 SEPFILTER2D_KERNEL_CN_TYPE(F32, float, F32, float, 4, 1, interpolateReflect101Border)
-
-
-// #if defined(SEPFILTER2D_F32C3) || defined(ALL_KERNELS)
-// SEPFILTER2D_KERNEL_CN_TYPE(F32, float, 3, 1)
-// #endif
-
-// #if defined(SEPFILTER2D_U8C4) || defined(ALL_KERNELS)
-// SEPFILTER2D_KERNEL_CN_TYPE(U8, uchar, 4, 4)
-// #endif
-
-// #if defined(SEPFILTER2D_F32C4) || defined(ALL_KERNELS)
-// SEPFILTER2D_KERNEL_CN_TYPE(F32, float, 4, 1)
-// #endif
+#endif

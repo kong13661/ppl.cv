@@ -26,6 +26,10 @@
 #define convert_uchar3 convert_uchar3_sat
 #define convert_uchar4 convert_uchar4_sat
 
+#define AB_BITS 10
+#define AB_SCALE 1024
+#define ROUND_DELTA 512
+
 #define GAUSSIANBLUR_VEC1(src_array, i) \
   src_array[0].INDEX_CONVERT##i
 #define GAUSSIANBLUR_VEC2(src_array, i) \
@@ -138,24 +142,45 @@
     GAUSSIANBLUR_C1_RAMAIN_ROW##cols_load(T, cols_load, 3, rows_load, SCALE) \
   }
 
-#define READ_BOARDER1(interpolation)           \
+#define READ_BOARDER1(interpolation, value)           \
   data_index = interpolation(cols, radius, j); \
   value.x = convert_float(src_temp[data_index]);
 
-#define READ_BOARDER2(interpolation)               \
-  READ_BOARDER1(interpolation)                     \
+#define READ_BOARDER2(interpolation, value)               \
+  READ_BOARDER1(interpolation, value)                     \
   data_index = interpolation(cols, radius, j + 1); \
   value.y = convert_float(src_temp[data_index]);
 
-#define READ_BOARDER3(interpolation)               \
-  READ_BOARDER2(interpolation)                     \
+#define READ_BOARDER3(interpolation, value)               \
+  READ_BOARDER2(interpolation, value)                     \
   data_index = interpolation(cols, radius, j + 2); \
   value.z = convert_float(src_temp[data_index]);
 
-#define READ_BOARDER4(interpolation)               \
-  READ_BOARDER3(interpolation)                     \
+#define READ_BOARDER4(interpolation, value)               \
+  READ_BOARDER3(interpolation, value)                     \
   data_index = interpolation(cols, radius, j + 3); \
   value.w = convert_float(src_temp[data_index]);
+
+__kernel
+void getGaussianKernel(float sigma, int ksize, global float* coefficients) {
+  float value = sigma > 0 ? sigma : ((ksize - 1) * 0.5f - 1) * 0.3f + 0.8f;
+  float scale_2x = -0.5f / (value * value);
+  float sum = 0.f;
+
+  int i;
+  float x;
+  for (i = 0; i < ksize; i++) {
+    x = i - (ksize - 1) * 0.5f;
+    value = exp(scale_2x * x * x);
+    coefficients[i] = value;
+    sum +=value;
+  }
+
+  sum = 1.f / sum;
+  for (i = 0; i < ksize; i++) {
+    coefficients[i] *= sum;
+  }
+}
 
 // #if defined(GAUSSIANBLUR_U81C) || defined(GAUSSIANBLUR_F321C) || \
 //     defined(ALL_KERNELS)
@@ -190,29 +215,40 @@
     data_index = (cols - radius) / (get_local_size(0) * cols_load);          \
     if (group_x >= data_index)                                               \
       isnt_border_block = false;                                             \
+    int data_index0;                                                         \
                                                                              \
     global const Tsrc* src_temp;                                             \
     for (int i = 0; i < min(remain_rows, rows_load); i++) {                  \
-      input_value[i] = (float##cols_load)(0);                                \
+      ((float##cols_load*)input_value+i)[0] = (float##cols_load)(0);                                \
       src_temp = src;                                                        \
       filter_kernel_index = 0;                                               \
       if (isnt_border_block) {                                               \
-        src_temp += bottom;                                                  \
-        for (int j = bottom; j <= top; j++) {                                \
-          input_value[i] +=                                                  \
-              convert_float##cols_load(vload##cols_load(0, src_temp)) *      \
+        src_temp += index_x;                                                  \
+        for (int j = radius; j > 0; j--) {                                \
+          ((float##cols_load*)input_value+i)[0] +=                                                  \
+              (convert_float##cols_load(vload##cols_load(0, src_temp - j)) + \
+               convert_float##cols_load(vload##cols_load(0, src_temp + j))) *      \
               filter_kernel[filter_kernel_index];                            \
-          src_temp += 1;                                                     \
           filter_kernel_index++;                                             \
         }                                                                    \
+        ((float##cols_load*)input_value+i)[0] += convert_float##cols_load(vload##cols_load(0, src_temp)) *\
+                            filter_kernel[filter_kernel_index];              \
       }                                                                      \
       else {                                                                 \
         float##cols_load value;                                              \
-        for (int j = bottom; j <= top; j++) {                                \
-          READ_BOARDER##cols_load(interpolation);                            \
-          input_value[i] += value * filter_kernel[filter_kernel_index];      \
+        int j;\
+        float##cols_load value1;                                              \
+        for (int j_radius = radius; j_radius > 0; j_radius--) {                                \
+          j = index_x - j_radius;                                         \
+          READ_BOARDER##cols_load(interpolation, value);                            \
+          j = index_x + j_radius;                                             \
+          READ_BOARDER##cols_load(interpolation, value1);                            \
+          ((float##cols_load*)input_value+i)[0] += (value + value1) * filter_kernel[filter_kernel_index];      \
           filter_kernel_index++;                                             \
         }                                                                    \
+        j = index_x;                                                      \
+        READ_BOARDER##cols_load(interpolation, value);                            \
+        ((float##cols_load*)input_value+i)[0] += (value) * filter_kernel[filter_kernel_index];      \
       }                                                                      \
       src = (global const Tsrc*)((uchar*)src + src_stride);                  \
     }                                                                        \
@@ -286,25 +322,34 @@
     data_index = (cols - radius) / (get_local_size(0));                              \
     if (group_x >= data_index)                                                       \
       isnt_border_block = false;                                                     \
+    int data_index0;\
                                                                                      \
     for (int i = 0; i < min(remain_rows, rows_load); i++) {                          \
       filter_kernel_index = 0;                                                       \
-      input_value[i] = (float##channels)(0);                                         \
+      ((float##channels*)input_value+i)[0] = (float##channels)(0);                                         \
       if (isnt_border_block) {                                                       \
-        for (int j = bottom; j <= top; j++) {                                        \
-          input_value[i] += convert_float##channels(vload##channels(j, src)) *       \
+        for (int j = radius; j > 0; j--) {                                        \
+          ((float##channels*)input_value+i)[0] += (convert_float##channels(vload##channels(index_x - j, src))\
+                                + convert_float##channels(vload##channels(index_x + j, src))) *       \
                             filter_kernel[filter_kernel_index];                      \
           filter_kernel_index++;                                                     \
         }                                                                            \
+        ((float##channels*)input_value+i)[0] += convert_float##channels(vload##channels(index_x, src)) *\
+                            filter_kernel[filter_kernel_index];                      \
       }                                                                              \
       else {                                                                         \
-        for (int j = bottom; j <= top; j++) {                                        \
-          data_index = interpolation(cols, radius, j);                               \
-          input_value[i] +=                                                          \
-              convert_float##channels(vload##channels(data_index, src)) *            \
+        for (int j = radius; j > 0; j--) {                                        \
+          data_index = interpolation(cols, radius, index_x - j);                               \
+          data_index0 = interpolation(cols, radius, index_x + j);                               \
+          ((float##channels*)input_value+i)[0] +=                                                          \
+              (convert_float##channels(vload##channels(data_index, src)) + \
+              convert_float##channels(vload##channels(data_index0, src))) *            \
               filter_kernel[filter_kernel_index];                                    \
           filter_kernel_index++;                                                     \
         }                                                                            \
+        data_index = interpolation(cols, radius, index_x);                               \
+        ((float##channels*)input_value+i)[0] += convert_float##channels(vload##channels(data_index, src)) *\
+                            filter_kernel[filter_kernel_index];                      \
       }                                                                              \
       src = (global const Tsrc*)((uchar*)src + src_stride);                          \
     }                                                                                \

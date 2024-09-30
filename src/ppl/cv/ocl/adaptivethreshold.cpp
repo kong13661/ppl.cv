@@ -91,7 +91,7 @@ void getGaussianKernel(float sigma, int ksize, float* coefficients);
   RetCode adaptivethreshold_meanC1##base_type(                                   \
       const cl_mem src, int rows, int cols, int src_stride, cl_mem dst,       \
       int dst_stride, float maxValue, int threshold_type, int ksize, float delta,        \
-      BorderType border_type, cl_context context, cl_command_queue queue) {   \
+      BorderType border_type, cl_command_queue queue) {   \
     PPL_ASSERT(src != nullptr);                                               \
     PPL_ASSERT(dst != nullptr);                                               \
     PPL_ASSERT(rows >= 1 && cols >= 1);                                       \
@@ -105,17 +105,19 @@ void getGaussianKernel(float sigma, int ksize, float* coefficients);
     PPL_ASSERT(border_type == BORDER_REPLICATE ||                             \
                border_type == BORDER_REFLECT ||                               \
                border_type == BORDER_REFLECT_101);                            \
+                                                                              \
+    FrameChain* frame_chain = getSharedFrameChain();                          \
+    frame_chain->setProjectName("cv");                                        \
+    SET_PROGRAM_SOURCE(frame_chain, adaptivethreshold);                     \
+    cl_context context = frame_chain->getContext();                           \
+                                                                              \
     cl_int error_code;                                                        \
     cl_mem buffer =                                                           \
         clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,    \
                        cols * (int)sizeof(float) * rows * (int)sizeof(float), \
                        NULL, &error_code);                                    \
     CHECK_ERROR(error_code, clCreateBuffer);                                  \
-                                                                              \
-    FrameChain* frame_chain = getSharedFrameChain();                          \
-    frame_chain->setProjectName("cv");                                        \
-    SET_PROGRAM_SOURCE(frame_chain, adaptivethreshold);                     \
-                                                                              \
+\
     int global_cols, global_rows;                                             \
     size_t global_size[2];                                                    \
                                                                               \
@@ -189,7 +191,7 @@ ADAPTIVEFILTER_MEAN_BOXFILTER_C1_TYPE(U8, uchar)
   RetCode adaptivethreshold_gaussianblurC1##base_type(                        \
       const cl_mem src, int rows, int cols, int src_stride, cl_mem dst,       \
       int dst_stride, float maxValue, int threshold_type, int ksize, float delta,    \
-      BorderType border_type, cl_context context, cl_command_queue queue) {   \
+      BorderType border_type, cl_command_queue queue) {   \
     PPL_ASSERT(src != nullptr);                                               \
     PPL_ASSERT(dst != nullptr);                                               \
     PPL_ASSERT(rows >= 1 && cols >= 1);                                       \
@@ -203,6 +205,12 @@ ADAPTIVEFILTER_MEAN_BOXFILTER_C1_TYPE(U8, uchar)
     PPL_ASSERT(border_type == BORDER_REPLICATE ||                             \
                border_type == BORDER_REFLECT ||                               \
                border_type == BORDER_REFLECT_101);                            \
+                                                                              \
+    FrameChain* frame_chain = getSharedFrameChain();                          \
+    frame_chain->setProjectName("cv");                                        \
+    SET_PROGRAM_SOURCE(frame_chain, adaptivethreshold);          \
+    cl_context context = frame_chain->getContext();                           \
+                                                                              \
     cl_int error_code;                                                        \
     cl_mem buffer =                                                           \
         clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,    \
@@ -214,11 +222,7 @@ ADAPTIVEFILTER_MEAN_BOXFILTER_C1_TYPE(U8, uchar)
         clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY,    \
                        ksize * (int)sizeof(float), NULL, &error_code);        \
     CHECK_ERROR(error_code, clCreateBuffer);                                  \
-                                                                              \
-    FrameChain* frame_chain = getSharedFrameChain();                          \
-    frame_chain->setProjectName("cv");                                        \
-    SET_PROGRAM_SOURCE(frame_chain, adaptivethreshold);          \
-                                                                              \
+      \
     int global_cols, global_rows;                                             \
     size_t global_size[2];                                                    \
                                                                               \
@@ -235,7 +239,7 @@ ADAPTIVETHRESHOLD_GAUSSIANBLUR_C1_TYPE(U8, uchar)
 
 #define AdaptiveThreshold_TYPE_C1_TEMPLATE(base_type, T)                      \
   RetCode AdaptiveThreshold(                                                  \
-      cl_context context, cl_command_queue queue, int height, int width,      \
+      cl_command_queue queue, int height, int width,      \
       int inWidthStride, const cl_mem inData, int outWidthStride,             \
       cl_mem outData, float maxValue, int adaptiveMethod, int threshold_type, \
       int blockSize, float delta, BorderType border_type) {                                \
@@ -247,13 +251,13 @@ ADAPTIVETHRESHOLD_GAUSSIANBLUR_C1_TYPE(U8, uchar)
     if (adaptiveMethod == ADAPTIVE_THRESH_MEAN_C) {                          \
       code = adaptivethreshold_meanC1##base_type(                     \
           inData, height, width, inWidthStride, outData, outWidthStride,      \
-          maxValue, threshold_type, blockSize, delta, border_type, context, queue);  \
+          maxValue, threshold_type, blockSize, delta, border_type, queue);  \
       return code;                                                            \
     }                                                                         \
     else {                                                                    \
       code = adaptivethreshold_gaussianblurC1##base_type(             \
           inData, height, width, inWidthStride, outData, outWidthStride,      \
-          maxValue, threshold_type, blockSize, delta, border_type, context, queue);  \
+          maxValue, threshold_type, blockSize, delta, border_type, queue);  \
     }                                                                         \
                                                                               \
     return code;                                                              \

@@ -196,12 +196,12 @@
                                                                               \
     global const Tsrc* src_temp;                                              \
     for (int i = 0; i < min(remain_rows, rows_load); i++) {                   \
-      input_value[i] = (float##cols_load)(0);                                 \
+      ((float##cols_load*)input_value+i)[0] = (float##cols_load)(0);                                 \
       src_temp = src;                                                         \
       if (isnt_border_block) {                                                \
         src_temp += bottom;                                                   \
         for (int j = bottom; j <= top; j++) {                                 \
-          input_value[i] +=                                                   \
+          ((float##cols_load*)input_value+i)[0] +=                                                   \
               convert_float##cols_load(vload##cols_load(0, src_temp));        \
           src_temp += 1;                                                      \
         }                                                                     \
@@ -210,14 +210,14 @@
         float##cols_load value;                                               \
         for (int j = bottom; j <= top; j++) {                                 \
           READ_BOARDER##cols_load(interpolation);                             \
-          input_value[i] += value;                                            \
+          ((float##cols_load*)input_value+i)[0] += value;                                            \
         }                                                                     \
       }                                                                       \
       src = (global const Tsrc*)((uchar*)src + src_stride);                   \
     }                                                                         \
     if (normalize) {                                                   \
       for (int i = 0; i < min(remain_rows, rows_load); i++) {                 \
-        input_value[i] *= weight;                  \
+        ((float##cols_load*)input_value+i)[0] *= weight;                  \
       }                                                                       \
     }                                                                         \
                                                                               \
@@ -295,16 +295,16 @@
       isnt_border_block = false;                                                   \
                                                                                    \
     for (int i = 0; i < min(remain_rows, rows_load); i++) {                        \
-      input_value[i] = (float##channels)(0);                                       \
+      ((float##channels*)input_value+i)[0] = (float##channels)(0);                                       \
       if (isnt_border_block) {                                                     \
         for (int j = bottom; j <= top; j++) {                                      \
-          input_value[i] += convert_float##channels(vload##channels(j, src));      \
+          ((float##channels*)input_value+i)[0] += convert_float##channels(vload##channels(j, src));      \
         }                                                                          \
       }                                                                            \
       else {                                                                       \
         for (int j = bottom; j <= top; j++) {                                      \
           data_index = interpolation(cols, radius, j);                             \
-          input_value[i] +=                                                        \
+          ((float##channels*)input_value+i)[0] +=                                                        \
               convert_float##channels(vload##channels(data_index, src));           \
         }                                                                          \
       }                                                                            \
@@ -312,7 +312,7 @@
     }                                                                              \
     if (normalize) {                                                        \
       for (int i = 0; i < min(remain_rows, rows_load); i++) {                      \
-        input_value[i] *= weight;                       \
+        ((float##channels*)input_value+i)[0] *= weight;                       \
       }                                                                            \
     }                                                                              \
                                                                                    \
@@ -321,34 +321,34 @@
   }
 // #endif
 
-BOXFILTER_KERNEL_C1_TYPE(F32, float, U8, uchar, 4, 4, interpolateReplicateBorder)
+BOXFILTER_KERNEL_C1_TYPE(F32, float, U8, uchar, 2, 2, interpolateReplicateBorder)
 BOXFILTER_KERNEL_C1_TYPE(U8, uchar, F32, float, 2, 2, interpolateReplicateBorder)
 BOXFILTER_KERNEL_C1_TYPE(F32, float, F32, float, 2, 2, interpolateReplicateBorder)
-BOXFILTER_KERNEL_C1_TYPE(F32, float, U8, uchar, 4, 4, interpolateReflectBorder)
+BOXFILTER_KERNEL_C1_TYPE(F32, float, U8, uchar, 2, 2, interpolateReflectBorder)
 BOXFILTER_KERNEL_C1_TYPE(U8, uchar, F32, float, 2, 2, interpolateReflectBorder)
 BOXFILTER_KERNEL_C1_TYPE(F32, float, F32, float, 2, 2, interpolateReflectBorder)
-BOXFILTER_KERNEL_C1_TYPE(F32, float, U8, uchar, 4, 4, interpolateReflect101Border)
+BOXFILTER_KERNEL_C1_TYPE(F32, float, U8, uchar, 2, 2, interpolateReflect101Border)
 BOXFILTER_KERNEL_C1_TYPE(U8, uchar, F32, float, 2, 2, interpolateReflect101Border)
 BOXFILTER_KERNEL_C1_TYPE(F32, float, F32, float, 2, 2, interpolateReflect101Border)
 
 BOXFILTER_KERNEL_CN_TYPE(U8, uchar, F32, float, 3, 1, interpolateReplicateBorder)
-BOXFILTER_KERNEL_CN_TYPE(F32, float, U8, uchar, 3, 4, interpolateReplicateBorder)
+BOXFILTER_KERNEL_CN_TYPE(F32, float, U8, uchar, 3, 1, interpolateReplicateBorder)
 BOXFILTER_KERNEL_CN_TYPE(F32, float, F32, float, 3, 1, interpolateReplicateBorder)
 BOXFILTER_KERNEL_CN_TYPE(U8, uchar, F32, float, 3, 1, interpolateReflectBorder)
-BOXFILTER_KERNEL_CN_TYPE(F32, float, U8, uchar, 3, 4, interpolateReflectBorder)
+BOXFILTER_KERNEL_CN_TYPE(F32, float, U8, uchar, 3, 1, interpolateReflectBorder)
 BOXFILTER_KERNEL_CN_TYPE(F32, float, F32, float, 3, 1, interpolateReflectBorder)
 BOXFILTER_KERNEL_CN_TYPE(U8, uchar, F32, float, 3, 1, interpolateReflect101Border)
-BOXFILTER_KERNEL_CN_TYPE(F32, float, U8, uchar, 3, 4, interpolateReflect101Border)
+BOXFILTER_KERNEL_CN_TYPE(F32, float, U8, uchar, 3, 1, interpolateReflect101Border)
 BOXFILTER_KERNEL_CN_TYPE(F32, float, F32, float, 3, 1, interpolateReflect101Border)
 
 BOXFILTER_KERNEL_CN_TYPE(U8, uchar, F32, float, 4, 1, interpolateReplicateBorder)
-BOXFILTER_KERNEL_CN_TYPE(F32, float, U8, uchar, 4, 4, interpolateReplicateBorder)
+BOXFILTER_KERNEL_CN_TYPE(F32, float, U8, uchar, 4, 1, interpolateReplicateBorder)
 BOXFILTER_KERNEL_CN_TYPE(F32, float, F32, float, 4, 1, interpolateReplicateBorder)
 BOXFILTER_KERNEL_CN_TYPE(U8, uchar, F32, float, 4, 1, interpolateReflectBorder)
-BOXFILTER_KERNEL_CN_TYPE(F32, float, U8, uchar, 4, 4, interpolateReflectBorder)
+BOXFILTER_KERNEL_CN_TYPE(F32, float, U8, uchar, 4, 1, interpolateReflectBorder)
 BOXFILTER_KERNEL_CN_TYPE(F32, float, F32, float, 4, 1, interpolateReflectBorder)
 BOXFILTER_KERNEL_CN_TYPE(U8, uchar, F32, float, 4, 1, interpolateReflect101Border)
-BOXFILTER_KERNEL_CN_TYPE(F32, float, U8, uchar, 4, 4, interpolateReflect101Border)
+BOXFILTER_KERNEL_CN_TYPE(F32, float, U8, uchar, 4, 1, interpolateReflect101Border)
 BOXFILTER_KERNEL_CN_TYPE(F32, float, F32, float, 4, 1, interpolateReflect101Border)
 
 

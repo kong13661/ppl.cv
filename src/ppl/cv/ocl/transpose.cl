@@ -131,7 +131,7 @@
     TRANSPOSE_C1_RAMAIN_ROW##cols_load(T, cols_load, 3, rows_load, SCALE) \
   }
 
-#if defined(TRANSPOSE_U81C) || defined(TRANSPOSE_F321C) || defined(ALL_KERNELS)
+// #if defined(TRANSPOSE_U81C) || defined(TRANSPOSE_F321C) || defined(ALL_KERNELS)
 #define TRANSPOSE_KERNEL_C1_TYPE(base_type, T, rows_load, cols_load)          \
   __kernel void transpose##base_type##C1Kernel(                               \
       global const T* src, int rows, int cols, int src_stride, global T* dst, \
@@ -155,7 +155,7 @@
     dst = (global T*)((uchar*)dst + dst_stride * index_x);                    \
     TRANSPOSE_C1_RAMAIN_COL##rows_load(T, cols_load, rows_load)               \
   }
-#endif
+// #endif
 
 #define TRANSPOSE_SAVE_CHANNEL1(T, rows_load, channels)   \
   if (remain_rows >= rows_load) {                         \
@@ -211,6 +211,7 @@
     TRANSPOSE_SAVE_CHANNEL##rows_load(T, rows_load, channels)                 \
   }
 #endif
+TRANSPOSE_KERNEL_C1_TYPE(F32, float, 2, 2)
 
 #if defined(TRANSPOSE_U81C) || defined(ALL_KERNELS)
 TRANSPOSE_KERNEL_C1_TYPE(U8, uchar, 4, 4)

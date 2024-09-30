@@ -125,35 +125,62 @@
     TRANSPOSE_RAMAIN_ROW##cols_load(Tsrc, Tdst, cols_load, 3, rows_load, SCALE)              \
   }
 
-#define VECTOR_SUM1(input_sum, input_value) \
-  input_sum[j] += input_value[j].x;
+#define VECTOR_SUM1(input_sum, input_value, load_size, Tdst) \
+  ((Tdst*)input_sum+j)[0] += ((Tdst##load_size*)input_value+j)[0].x;
 
-#define VECTOR_SUM2(input_sum, input_value) \
-  VECTOR_SUM1(input_sum, input_value)       \
-  input_sum[j] += input_value[j].y;
+#define VECTOR_SUM2(input_sum, input_value, load_size, Tdst) \
+  VECTOR_SUM1(input_sum, input_value, load_size, Tdst)       \
+  ((Tdst*)input_sum+j)[0] += ((Tdst##load_size*)input_value+j)[0].y;
 
-#define VECTOR_SUM3(input_sum, input_value) \
-  VECTOR_SUM2(input_sum, input_value)       \
-  input_sum[j] += input_value[j].z;
+#define VECTOR_SUM3(input_sum, input_value, load_size, Tdst) \
+  VECTOR_SUM2(input_sum, input_value, load_size, Tdst)       \
+  ((Tdst*)input_sum+j)[0] += ((Tdst##load_size*)input_value+j)[0].z;
 
-#define VECTOR_SUM4(input_sum, input_value) \
-  VECTOR_SUM3(input_sum, input_value)       \
-  input_sum[j] += input_value[j].w;
+#define VECTOR_SUM4(input_sum, input_value, load_size, Tdst) \
+  VECTOR_SUM3(input_sum, input_value, load_size, Tdst)       \
+  ((Tdst*)input_sum+j)[0] += ((Tdst##load_size*)input_value+j)[0].w;
 
-#define CUM_SUM1(input_sum, input_value)    \
-  input_value[j].x += input_sum[j];
+#define CUM_SUM1(input_sum, input_value, load_size, Tdst)    \
+  ((Tdst##load_size*)input_value+j)[0].x += ((Tdst*)input_sum+j)[0];
 
-#define CUM_SUM2(input_sum, input_value)    \
-  CUM_SUM1(input_sum, input_value)          \
-  input_value[j].y += input_value[j].x;
+#define CUM_SUM2(input_sum, input_value, load_size, Tdst)    \
+  CUM_SUM1(input_sum, input_value, load_size, Tdst)          \
+  ((Tdst##load_size*)input_value+j)[0].y += ((Tdst##load_size*)input_value+j)[0].x;
 
-#define CUM_SUM3(input_sum, input_value)    \
-  CUM_SUM2(input_sum, input_value)          \
-  input_value[j].z += input_value[j].y;
+#define CUM_SUM3(input_sum, input_value, load_size, Tdst)    \
+  CUM_SUM2(input_sum, input_value, load_size, Tdst)          \
+  ((Tdst##load_size*)input_value+j)[0].z += ((Tdst##load_size*)input_value+j)[0].y;
 
-#define CUM_SUM4(input_sum, input_value)    \
-  CUM_SUM3(input_sum, input_value)          \
-  input_value[j].w += input_value[j].z;
+#define CUM_SUM4(input_sum, input_value, load_size, Tdst)    \
+  CUM_SUM3(input_sum, input_value, load_size, Tdst)          \
+  ((Tdst##load_size*)input_value+j)[0].w += ((Tdst##load_size*)input_value+j)[0].z;
+
+__kernel void setZeroF32(global float* dst, int cols){
+  int index_x = get_global_id(0);
+  index_x <<= 1;
+  if (index_x >= cols){
+    return;
+  }
+  if (cols - index_x >= 2){
+    vstore2((float2)(0.0f, 0.0f), get_global_id(0), dst);
+  } else {
+    dst[index_x] = 0;
+  }
+}
+
+__kernel void setZeroI32(global int* dst, int cols){
+  int index_x = get_global_id(0);
+  index_x <<= 1;
+  if (index_x >= cols){
+    return;
+  }
+  if (cols - index_x >= 2){
+    vstore2((int2)(0.0f, 0.0f), get_global_id(0), dst);
+  } else {
+    dst[index_x] = 0;
+  }
+}
+
 
 #define INTEGRAL_VERTICAL_KERNEL(src_base_type, Tsrc, dst_base_type, Tdst, load_size)   \
 __kernel void integral##src_base_type##dst_base_type##Kernel(                           \
@@ -205,24 +232,24 @@ __kernel void integral##src_base_type##dst_base_type##Kernel(                   
       for (int i = 0; i < load_size; i++) {                                             \
         input_sum[i] = prev_sum[i];                                                     \
       }                                                                                 \
-      {                                                                                 \
-        int i;                                                                          \
-        for (i = 0; i <= index_x - 1; i = i + load_size) {                              \
-          src_tmp = src + i;                                                            \
-          for (int j = 0; j < min(remain_rows, load_size); j++) {                       \
-            input_value[j] = convert_##Tdst(vload##load_size(0, src_tmp));              \
-            src_tmp = (global const Tsrc*)((uchar*)src_tmp + src_stride);               \
-            VECTOR_SUM##load_size(input_sum, input_value)                               \
-          }                                                                             \
-        }                                                                               \
-        i = index_x;                                                                    \
-        src_tmp = src + i;                                                              \
-          for (int j = 0; j < min(remain_rows, load_size); j++) {                       \
-            input_value[j] = convert_##Tdst(vload##load_size(0, src_tmp));              \
-            src_tmp = (global const Tsrc*)((uchar*)src_tmp + src_stride);               \
-            CUM_SUM##load_size(input_sum, input_value)                                  \
-          }                                                                             \
-      }                                                                                 \
+  {                                                                                 \
+    int i;                                                                          \
+    for (i = 0; i <= index_x - 1; i = i + load_size) {                              \
+      src_tmp = src + i;                                                            \
+      for (int j = 0; j < min(remain_rows, load_size); j++) {                       \
+        ((Tdst##load_size*)input_value+j)[0] = convert_##Tdst##load_size(vload##load_size(0, src_tmp));              \
+        src_tmp = (global const Tsrc*)((uchar*)src_tmp + src_stride);               \
+        VECTOR_SUM##load_size(input_sum, input_value, load_size, Tdst)                               \
+      }                                                                             \
+    }                                                                               \
+    i = index_x;                                                                    \
+    src_tmp = src + i;                                                              \
+      for (int j = 0; j < min(remain_rows, load_size); j++) {                       \
+        ((Tdst##load_size*)input_value+j)[0] = convert_##Tdst##load_size(vload##load_size(0, src_tmp));              \
+        src_tmp = (global const Tsrc*)((uchar*)src_tmp + src_stride);               \
+        CUM_SUM##load_size(input_sum, input_value, load_size, Tdst)                                  \
+      }                                                                             \
+  }                                                                                 \
                                                                                         \
       dst_tmp_prev = dst_tmp;                                                           \
       TRANSPOSE_RAMAIN_COL##load_size(Tsrc, Tdst, load_size, load_size)                 \

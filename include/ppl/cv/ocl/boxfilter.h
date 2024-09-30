@@ -105,8 +105,7 @@ namespace ocl {
  * @endcode
  */
 template <typename T, int channels>
-ppl::common::RetCode BoxFilter(cl_context context, 
-                                  cl_command_queue queue,
+ppl::common::RetCode BoxFilter(cl_command_queue queue,
                                   int height,
                                   int width,
                                   int inWidthStride,
@@ -116,6 +115,7 @@ ppl::common::RetCode BoxFilter(cl_context context,
                                   bool normalize,
                                   int outWidthStride,
                                   cl_mem outData,
+                                  cl_mem buffer,
                                   BorderType border_type = BORDER_DEFAULT);
 
 }  // namespace ocl

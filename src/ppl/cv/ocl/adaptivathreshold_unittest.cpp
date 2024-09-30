@@ -183,10 +183,10 @@ bool PplCvOclAdaptiveThresholdToTest<T, channels>::apply() {
   //               cv::Point(-1, -1), true, cv::BORDER_REPLICATE);
 
   ppl::cv::ocl::AdaptiveThreshold(
-      context, queue, src.rows, src.cols, src.step / sizeof(T), gpu_src, dst.step / sizeof(T), gpu_dst, 
+      queue, src.rows, src.cols, src.step / sizeof(T), gpu_src, dst.step / sizeof(T), gpu_dst, 
       max_value, adaptive_method, threshold_type, ksize, delta, border_type);
   ppl::cv::ocl::AdaptiveThreshold(
-      context, queue, size.height, size.width, size.width * channels, gpu_input, size.width * channels, gpu_output,
+      queue, size.height, size.width, size.width * channels, gpu_input, size.width * channels, gpu_output,
       max_value, adaptive_method, threshold_type, ksize, delta, border_type);
   error_code = clEnqueueReadBuffer(queue, gpu_dst, CL_TRUE, 0, dst_bytes0,
                                    dst.data, 0, NULL, NULL);

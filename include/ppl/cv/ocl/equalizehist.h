@@ -111,7 +111,8 @@ ppl::common::RetCode equalizeHist(cl_command_queue queue,
                                   const cl_mem inData,
                                   int outWidthStride,
                                   cl_mem outData,
-                                  cl_context context);
+                                  cl_mem hist,
+                                  cl_mem group_count);
 
 }  // namespace ocl
 }  // namespace cv

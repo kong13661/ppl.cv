@@ -19,10 +19,11 @@
 #define INDEX_CONVERT3 z
 #define INDEX_CONVERT4 w
 
-#define vstore1 vstore
+#define vstore1(output_value, offset, dst) dst[offset] = output_value;
 #define uchar1 uchar
 #define float1 float
 
+#if defined(ROTATE90_U8C1) || defined(ROTATE90_F32C1) || defined(ALL_KERNELS)
 #define ROTATE_SAVE_90_OUTPUT_RIGHTVALUE_1(T, col_index) \
   input_value[0].INDEX_CONVERT##col_index
 
@@ -46,21 +47,21 @@
   output_value = (T##rows_remained)(                             \
       ROTATE_SAVE_90_OUTPUT_RIGHTVALUE_##rows_remained(T, 1));   \
   vstore##rows_remained(output_value, 0, dst);                   \
-  dst = (global T*)((uchar*)dst + dst_stride);
+  dst = (global T*)((global uchar*)dst + dst_stride);
 
 #define ROTATE_SAVE_90_OUTPUT_2(T, cols_remained, rows_remained) \
   ROTATE_SAVE_90_OUTPUT_1(T, cols_remained, rows_remained)       \
   output_value = (T##rows_remained)(                             \
       ROTATE_SAVE_90_OUTPUT_RIGHTVALUE_##rows_remained(T, 2));   \
   vstore##rows_remained(output_value, 0, dst);                   \
-  dst = (global T*)((uchar*)dst + dst_stride);
+  dst = (global T*)((global uchar*)dst + dst_stride);
 
 #define ROTATE_SAVE_90_OUTPUT_3(T, cols_remained, rows_remained) \
   ROTATE_SAVE_90_OUTPUT_2(T, cols_remained, rows_remained)       \
   output_value = (T##rows_remained)(                             \
       ROTATE_SAVE_90_OUTPUT_RIGHTVALUE_##rows_remained(T, 3));   \
   vstore##rows_remained(output_value, 0, dst);                   \
-  dst = (global T*)((uchar*)dst + dst_stride);
+  dst = (global T*)((global uchar*)dst + dst_stride);
 
 #define ROTATE_SAVE_90_OUTPUT_4(T, cols_remained, rows_remained) \
   ROTATE_SAVE_90_OUTPUT_3(T, cols_remained, rows_remained)       \
@@ -68,6 +69,13 @@
       ROTATE_SAVE_90_OUTPUT_RIGHTVALUE_##rows_remained(T, 4));   \
   vstore##rows_remained(output_value, 0, dst);
 
+#define ROTATE_DST_90(T, rows_load, cols_load)            \
+  dst = (global T*)((global uchar*)dst + dst_stride * index_x) + \
+        max(rows - index_y - rows_load, 0);
+#endif
+
+#if defined(ROTATE90_U8C1) || defined(ROTATE90_F32C1) || defined(ROTATE180_U8C1) ||\
+  defined(ROTATE180_F32C1) || defined(ROTATE270_U8C1) || defined(ROTATE270_F32C1) || defined(ALL_KERNELS)
 #define ROTATE_SAVE_IF_ROW1(T, cols_remained, rows_remained, cols_load,    \
                             rows_load, degree)                             \
   if (rows_remained >= rows_load) {                                        \
@@ -128,13 +136,11 @@
   else if (cols_remained == 3) {                                             \
     ROTATE_SAVE_IF_ROW##rows_load(T, 3, rows_remained, 3, rows_load, degree) \
   }
-
-#define ROTATE_DST_90(T, rows_load, cols_load)            \
-  dst = (global T*)((uchar*)dst + dst_stride * index_x) + \
-        max(rows - index_y - rows_load, 0);
+#endif
 
 // =======================================================================
 
+#if defined(ROTATE180_U8C1) || defined(ROTATE180_F32C1) || defined(ALL_KERNELS)
 #define ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_1(T, row_index) \
   input_value[row_index].x
 
@@ -154,58 +160,58 @@
   output_value = (T##cols_remained)(                               \
       ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_##cols_remained(T, 0));    \
   vstore##cols_remained(output_value, 0, dst);                     \
-  dst = (global T*)((uchar*)dst + dst_stride);
+  dst = (global T*)((global uchar*)dst + dst_stride);
 
 #define ROTATE_SAVE_180_OUTPUT_2_(T, cols_remained, rows_remained) \
   T##cols_remained output_value;                                   \
   output_value = (T##cols_remained)(                               \
       ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_##cols_remained(T, 1));    \
   vstore##cols_remained(output_value, 0, dst);                     \
-  dst = (global T*)((uchar*)dst + dst_stride);                     \
+  dst = (global T*)((global uchar*)dst + dst_stride);                     \
                                                                    \
   output_value = (T##cols_remained)(                               \
       ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_##cols_remained(T, 0));    \
   vstore##cols_remained(output_value, 0, dst);                     \
-  dst = (global T*)((uchar*)dst + dst_stride);
+  dst = (global T*)((global uchar*)dst + dst_stride);
 
 #define ROTATE_SAVE_180_OUTPUT_3_(T, cols_remained, rows_remained) \
   T##cols_remained output_value;                                   \
   output_value = (T##cols_remained)(                               \
       ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_##cols_remained(T, 2));    \
   vstore##cols_remained(output_value, 0, dst);                     \
-  dst = (global T*)((uchar*)dst + dst_stride);                     \
+  dst = (global T*)((global uchar*)dst + dst_stride);                     \
                                                                    \
   output_value = (T##cols_remained)(                               \
       ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_##cols_remained(T, 1));    \
   vstore##cols_remained(output_value, 0, dst);                     \
-  dst = (global T*)((uchar*)dst + dst_stride);                     \
+  dst = (global T*)((global uchar*)dst + dst_stride);                     \
                                                                    \
   output_value = (T##cols_remained)(                               \
       ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_##cols_remained(T, 0));    \
   vstore##cols_remained(output_value, 0, dst);                     \
-  dst = (global T*)((uchar*)dst + dst_stride);
+  dst = (global T*)((global uchar*)dst + dst_stride);
 
 #define ROTATE_SAVE_180_OUTPUT_4_(T, cols_remained, rows_remained) \
   T##cols_remained output_value;                                   \
   output_value = (T##cols_remained)(                               \
       ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_##cols_remained(T, 3));    \
   vstore##cols_remained(output_value, 0, dst);                     \
-  dst = (global T*)((uchar*)dst + dst_stride);                     \
+  dst = (global T*)((global uchar*)dst + dst_stride);                     \
                                                                    \
   output_value = (T##cols_remained)(                               \
       ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_##cols_remained(T, 2));    \
   vstore##cols_remained(output_value, 0, dst);                     \
-  dst = (global T*)((uchar*)dst + dst_stride);                     \
+  dst = (global T*)((global uchar*)dst + dst_stride);                     \
                                                                    \
   output_value = (T##cols_remained)(                               \
       ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_##cols_remained(T, 1));    \
   vstore##cols_remained(output_value, 0, dst);                     \
-  dst = (global T*)((uchar*)dst + dst_stride);                     \
+  dst = (global T*)((global uchar*)dst + dst_stride);                     \
                                                                    \
   output_value = (T##cols_remained)(                               \
       ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_##cols_remained(T, 0));    \
   vstore##cols_remained(output_value, 0, dst);                     \
-  dst = (global T*)((uchar*)dst + dst_stride);
+  dst = (global T*)((global uchar*)dst + dst_stride);
 
 #define ROTATE_SAVE_180_OUTPUT_1(T, cols_remained, rows_remained) \
   ROTATE_SAVE_180_OUTPUT_##rows_remained##_(T, cols_remained, rows_remained)
@@ -220,12 +226,13 @@
   ROTATE_SAVE_180_OUTPUT_##rows_remained##_(T, cols_remained, rows_remained)
 
 #define ROTATE_DST_180(T, rows_load, cols_load)                        \
-  dst = (global T*)((uchar*)dst +                                      \
+  dst = (global T*)((global uchar*)dst +                                      \
                     dst_stride * max(rows - index_y - rows_load, 0)) + \
         max(cols - index_x - cols_load, 0);
-
+#endif
 // ===============================================================================
 
+#if defined(ROTATE270_U8C1) || defined(ROTATE270_F32C1) || defined(ALL_KERNELS)
 #define ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_1(T, col_index) \
   input_value[0].INDEX_CONVERT##col_index
 
@@ -249,67 +256,84 @@
   output_value = (T##rows_remained)(                              \
       ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_##rows_remained(T, 1));   \
   vstore##rows_remained(output_value, 0, dst);                    \
-  dst = (global T*)((uchar*)dst + dst_stride);
+  dst = (global T*)((global uchar*)dst + dst_stride);
 
 #define ROTATE_SAVE_270_OUTPUT_2(T, cols_remained, rows_remained) \
   T##rows_remained output_value;                                  \
   output_value = (T##rows_remained)(                              \
       ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_##rows_remained(T, 2));   \
   vstore##rows_remained(output_value, 0, dst);                    \
-  dst = (global T*)((uchar*)dst + dst_stride);                    \
+  dst = (global T*)((global uchar*)dst + dst_stride);                    \
                                                                   \
   output_value = (T##rows_remained)(                              \
       ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_##rows_remained(T, 1));   \
   vstore##rows_remained(output_value, 0, dst);                    \
-  dst = (global T*)((uchar*)dst + dst_stride);
+  dst = (global T*)((global uchar*)dst + dst_stride);
 
 #define ROTATE_SAVE_270_OUTPUT_3(T, cols_remained, rows_remained) \
   T##rows_remained output_value;                                  \
   output_value = (T##rows_remained)(                              \
       ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_##rows_remained(T, 3));   \
   vstore##rows_remained(output_value, 0, dst);                    \
-  dst = (global T*)((uchar*)dst + dst_stride);                    \
+  dst = (global T*)((global uchar*)dst + dst_stride);                    \
                                                                   \
   output_value = (T##rows_remained)(                              \
       ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_##rows_remained(T, 2));   \
   vstore##rows_remained(output_value, 0, dst);                    \
-  dst = (global T*)((uchar*)dst + dst_stride);                    \
+  dst = (global T*)((global uchar*)dst + dst_stride);                    \
                                                                   \
   output_value = (T##rows_remained)(                              \
       ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_##rows_remained(T, 1));   \
   vstore##rows_remained(output_value, 0, dst);                    \
-  dst = (global T*)((uchar*)dst + dst_stride);
+  dst = (global T*)((global uchar*)dst + dst_stride);
 
 #define ROTATE_SAVE_270_OUTPUT_4(T, cols_remained, rows_remained) \
   T##rows_remained output_value;                                  \
   output_value = (T##rows_remained)(                              \
       ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_##rows_remained(T, 4));   \
   vstore##rows_remained(output_value, 0, dst);                    \
-  dst = (global T*)((uchar*)dst + dst_stride);                    \
+  dst = (global T*)((global uchar*)dst + dst_stride);                    \
                                                                   \
   output_value = (T##rows_remained)(                              \
       ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_##rows_remained(T, 3));   \
   vstore##rows_remained(output_value, 0, dst);                    \
-  dst = (global T*)((uchar*)dst + dst_stride);                    \
+  dst = (global T*)((global uchar*)dst + dst_stride);                    \
                                                                   \
   output_value = (T##rows_remained)(                              \
       ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_##rows_remained(T, 2));   \
   vstore##rows_remained(output_value, 0, dst);                    \
-  dst = (global T*)((uchar*)dst + dst_stride);                    \
+  dst = (global T*)((global uchar*)dst + dst_stride);                    \
                                                                   \
   output_value = (T##rows_remained)(                              \
       ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_##rows_remained(T, 1));   \
   vstore##rows_remained(output_value, 0, dst);                    \
-  dst = (global T*)((uchar*)dst + dst_stride);
+  dst = (global T*)((global uchar*)dst + dst_stride);
 
 #define ROTATE_DST_270(T, rows_load, cols_load)                        \
-  dst = (global T*)((uchar*)dst +                                      \
+  dst = (global T*)((global uchar*)dst +                                      \
                     dst_stride * max(cols - index_x - cols_load, 0)) + \
         index_y;
-
+#endif
 // ==============================================================================
 
-// #if defined(TOTATE90_U81C) || defined(RAOTATE90_F321C) || defined(ALL_KERNELS)
+#define LOAD_ELEMENT2 \
+  input_value[i].x = src[index_x];
+#define LOAD_ELEMENT3\
+  input_value[i].x = src[index_x];\
+  if (cols_remained > 1) {\
+    input_value[i].y = src[index_x + 1];\
+  }
+#define LOAD_ELEMENT4\
+  input_value[i].x = src[index_x];\
+  if (cols_remained > 1) {\
+    input_value[i].y = src[index_x + 1];\
+  }\
+  if (cols_remained > 2) {\
+    input_value[i].z = src[index_x + 2];\
+  }
+
+#if defined(ROTATE90_U8C1) || defined(ROTATE90_F32C1) || defined(ROTATE180_U8C1) ||\
+  defined(ROTATE180_F32C1) || defined(ROTATE270_U8C1) || defined(ROTATE270_F32C1) || defined(ALL_KERNELS)
 #define ROTATE_KERNEL_C1_TYPE(base_type, T, rows_load, cols_load, degree)     \
   __kernel void rotateC1##degree##base_type##Kernel(                          \
       global const T* src, int rows, int cols, int src_stride, global T* dst, \
@@ -321,24 +345,25 @@
       return;                                                                 \
     }                                                                         \
                                                                               \
-    src = (global const T*)((uchar*)src + index_y * src_stride);              \
+    src = (global const T*)((global uchar*)src + index_y * src_stride);              \
     int cols_remained = cols - index_x, rows_remained = rows - index_y;       \
                                                                               \
     T##cols_load input_value[rows_load];                                      \
     for (int i = 0; i < min(rows_remained, rows_load); i++) {                 \
-      input_value[i] = vload##cols_load(element_x, src);                      \
-      src = (global const T*)((uchar*)src + src_stride);                      \
+      input_value[i] = vload##cols_load(element_x, src);                    \
+      src = (global const T*)((global uchar*)src + src_stride);                      \
     }                                                                         \
                                                                               \
     ROTATE_DST_##degree(T, rows_load, cols_load)                              \
         ROTATE_SAVE_IF_COL##cols_load(T, rows_load, cols_remained,            \
                                       rows_remained, cols_load, dst, degree)  \
   }
-// #endif
+#endif
 
 
 // =================================================================
-
+#if defined(ROTATE90_U8C3) || defined(ROTATE90_F32C3) || \
+  defined(ROTATE90_U8C4) || defined(ROTATE90_F32C4) || defined(ALL_KERNELS)
 #define ROTATE_SAVE_90_OUTPUT_CN_1(T, channels) \
   vstore##channels(input_value[0], 0, dst);
 
@@ -364,11 +389,13 @@
   vstore##channels(input_value[0], 0, dst);
 
 #define ROTATE_DST_CN_90(T, rows_load, cols_load, channels) \
-  dst = (global T*)((uchar*)dst + dst_stride * index_x) +   \
+  dst = (global T*)((global uchar*)dst + dst_stride * index_x) +   \
         max(rows - index_y - rows_load, 0) * channels;
-
+#endif
 // =================================================================
 
+#if defined(ROTATE180_U8C3) || defined(ROTATE180_F32C3) || \
+  defined(ROTATE180_U8C4) || defined(ROTATE180_F32C4) || defined(ALL_KERNELS)
 #define ROTATE_SAVE_180_OUTPUT_CN_1(T, channels) \
   vstore##channels(input_value[0], 0, dst);
 
@@ -394,12 +421,14 @@
   vstore##channels(input_value[0], 0, dst);
 
 #define ROTATE_DST_CN_180(T, rows_load, cols_load, channels) \
-  dst = (global T*)((uchar*)dst + dst_stride * max(rows - index_y - rows_load, 0)) +   \
+  dst = (global T*)((global uchar*)dst + dst_stride * max(rows - index_y - rows_load, 0)) +   \
         max(cols - index_x - cols_load, 0) * channels;
-
+#endif
 
 // =================================================================
 
+#if defined(ROTATE270_U8C3) || defined(ROTATE270_F32C3) || \
+  defined(ROTATE270_U8C4) || defined(ROTATE270_F32C4) || defined(ALL_KERNELS)
 #define ROTATE_SAVE_270_OUTPUT_CN_1(T, channels) \
   vstore##channels(input_value[0], 0, dst);
 
@@ -419,10 +448,17 @@
   vstore##channels(input_value[3], 0, dst);
 
 #define ROTATE_DST_CN_270(T, rows_load, cols_load, channels)           \
-  dst = (global T*)((uchar*)dst +                                      \
+  dst = (global T*)((global uchar*)dst +                                      \
                     dst_stride * max(cols - index_x - cols_load, 0)) + \
         index_y * channels;
+#endif
 
+#if defined(ROTATE270_U8C3) || defined(ROTATE270_F32C3) || \
+  defined(ROTATE270_U8C4) || defined(ROTATE270_F32C4) || \
+  defined(ROTATE180_U8C3) || defined(ROTATE180_F32C3) || \
+  defined(ROTATE180_U8C4) || defined(ROTATE180_F32C4) || \
+  defined(ROTATE90_U8C3) || defined(ROTATE90_F32C3) || \
+  defined(ROTATE90_U8C4) || defined(ROTATE90_F32C4) || defined(ALL_KERNELS)
 #define ROTATE_SAVE_ROW_CN_IF_1(T, rows_load, channels, degree) \
   if (rows_remained >= rows_load) {                             \
     ROTATE_SAVE_##degree##_OUTPUT_CN_##rows_load(T, channels)   \
@@ -445,9 +481,15 @@
   if (rows_remained == 3) {                                     \
     ROTATE_SAVE_##degree##_OUTPUT_CN_##3(T, channels)           \
   }
-
+#endif
 // =================================================================
 
+#if defined(ROTATE270_U8C3) || defined(ROTATE270_F32C3) || \
+  defined(ROTATE270_U8C4) || defined(ROTATE270_F32C4) || \
+  defined(ROTATE180_U8C3) || defined(ROTATE180_F32C3) || \
+  defined(ROTATE180_U8C4) || defined(ROTATE180_F32C4) || \
+  defined(ROTATE90_U8C3) || defined(ROTATE90_F32C3) || \
+  defined(ROTATE90_U8C4) || defined(ROTATE90_F32C4) || defined(ALL_KERNELS)
 #define ROTATE_KERNEL_CN_TYPE(base_type, T, channels, rows_load, degree)      \
   __kernel void rotateC##channels##degree##base_type##Kernel(                 \
       global const T* src, int rows, int cols, int src_stride, global T* dst, \
@@ -459,42 +501,79 @@
       return;                                                                 \
     }                                                                         \
                                                                               \
-    src = (global const T*)((uchar*)src + index_y * src_stride);              \
+    src = (global const T*)((global uchar*)src + index_y * src_stride);              \
     int rows_remained = rows - index_y;                                       \
                                                                               \
     T##channels input_value[rows_load];                                       \
     for (int i = 0; i < min(rows_remained, rows_load); i++) {                 \
       input_value[i] = vload##channels(element_x, src);                       \
-      src = (global const T*)((uchar*)src + src_stride);                      \
+      src = (global const T*)((global uchar*)src + src_stride);                      \
     }                                                                         \
                                                                               \
     ROTATE_DST_CN_##degree(T, rows_load, 1, channels)                         \
         ROTATE_SAVE_ROW_CN_IF_##rows_load(T, rows_load, channels, degree)     \
   }
+#endif
 
-ROTATE_KERNEL_C1_TYPE(F32, float, 2, 2, 90)
+#if defined(ROTATE90_U8C1) || defined(ALL_KERNELS)
 ROTATE_KERNEL_C1_TYPE(U8, uchar, 4, 4, 90)
+#endif
+#if defined(ROTATE90_F32C1) || defined(ALL_KERNELS)
+ROTATE_KERNEL_C1_TYPE(F32, float, 2, 2, 90)
+#endif
 
+#if defined(ROTATE180_U8C1) || defined(ALL_KERNELS)
 ROTATE_KERNEL_C1_TYPE(U8, uchar, 4, 4, 180)
+#endif
+#if defined(ROTATE180_F32C1) || defined(ALL_KERNELS)
 ROTATE_KERNEL_C1_TYPE(F32, float, 2, 2, 180)
+#endif
 
-ROTATE_KERNEL_C1_TYPE(F32, float, 2, 2, 270)
+#if defined(ROTATE270_U8C1) || defined(ALL_KERNELS)
 ROTATE_KERNEL_C1_TYPE(U8, uchar, 4, 4, 270)
+#endif
+#if defined(ROTATE270_F32C1) || defined(ALL_KERNELS)
+ROTATE_KERNEL_C1_TYPE(F32, float, 2, 2, 270)
+#endif
 
+#if defined(ROTATE90_U8C3) || defined(ALL_KERNELS)
 ROTATE_KERNEL_CN_TYPE(U8, uchar, 3, 4, 90)
-ROTATE_KERNEL_CN_TYPE(F32, float, 3, 1, 90)
+#endif
+#if defined(ROTATE90_F32C3) || defined(ALL_KERNELS)
+ROTATE_KERNEL_CN_TYPE(F32, float, 3, 2, 90)
+#endif
 
-ROTATE_KERNEL_CN_TYPE(U8, uchar, 4, 4, 90)
-ROTATE_KERNEL_CN_TYPE(F32, float, 4, 1, 90)
-
+#if defined(ROTATE180_U8C3) || defined(ALL_KERNELS)
 ROTATE_KERNEL_CN_TYPE(U8, uchar, 3, 4, 180)
-ROTATE_KERNEL_CN_TYPE(F32, float, 3, 1, 180)
+#endif
+#if defined(ROTATE180_F32C3) || defined(ALL_KERNELS)
+ROTATE_KERNEL_CN_TYPE(F32, float, 3, 2, 180)
+#endif
 
-ROTATE_KERNEL_CN_TYPE(U8, uchar, 4, 4, 180)
-ROTATE_KERNEL_CN_TYPE(F32, float, 4, 1, 180)
-
+#if defined(ROTATE270_U8C3) || defined(ALL_KERNELS)
 ROTATE_KERNEL_CN_TYPE(U8, uchar, 3, 4, 270)
-ROTATE_KERNEL_CN_TYPE(F32, float, 3, 1, 270)
+#endif
+#if defined(ROTATE270_F32C3) || defined(ALL_KERNELS)
+ROTATE_KERNEL_CN_TYPE(F32, float, 3, 2, 270)
+#endif
 
+#if defined(ROTATE90_U8C4) || defined(ALL_KERNELS)
+ROTATE_KERNEL_CN_TYPE(U8, uchar, 4, 4, 90)
+#endif
+#if defined(ROTATE90_F32C4) || defined(ALL_KERNELS)
+ROTATE_KERNEL_CN_TYPE(F32, float, 4, 2, 90)
+#endif
+
+#if defined(ROTATE180_U8C4) || defined(ALL_KERNELS)
+ROTATE_KERNEL_CN_TYPE(U8, uchar, 4, 4, 180)
+#endif
+#if defined(ROTATE180_F32C4) || defined(ALL_KERNELS)
+ROTATE_KERNEL_CN_TYPE(F32, float, 4, 2, 180)
+#endif
+
+#if defined(ROTATE270_U8C4) || defined(ALL_KERNELS)
 ROTATE_KERNEL_CN_TYPE(U8, uchar, 4, 4, 270)
-ROTATE_KERNEL_CN_TYPE(F32, float, 4, 1, 270)
+#endif
+#if defined(ROTATE270_F32C4) || defined(ALL_KERNELS)
+ROTATE_KERNEL_CN_TYPE(F32, float, 4, 2, 270)
+#endif

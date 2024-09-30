@@ -93,21 +93,19 @@ void getGaussianKernel(float sigma, int ksize, float* coefficients) {
 
 #define RUN_KERNEL(interpolate, base_type)                                    \
   {                                                                           \
-    float* kernel_cpu = new float[ksize];                                     \
-    getGaussianKernel(sigma, ksize, kernel_cpu);                              \
-    error_code = clEnqueueWriteBuffer(queue, kernel, CL_FALSE, 0,             \
-                                      ksize * (int)sizeof(float), kernel_cpu, \
-                                      0, NULL, NULL);                         \
-    CHECK_ERROR(error_code, clEnqueueWriteBuffer);                            \
-    delete[] kernel_cpu;                                                      \
                                                                               \
     ksize = ksize >> 1;                                                       \
     size_t local_size[] = {kBlockDimX0, kBlockDimY0};                         \
     global_cols = divideUp(cols, F32##DIV, F32##OFFSET);                      \
     global_rows = divideUp(rows, F32##DIV, F32##OFFSET);                      \
-    global_size[0] = (size_t)global_cols;                                     \
+    global_size[0] = (size_t)1;                                     \
     global_size[1] = (size_t)global_rows;                                     \
     frame_chain->setCompileOptions("-D GAUSSIANBLUR_" #base_type "1C");       \
+    runOclKernel(frame_chain,                                                 \
+                 "getGaussianKernel", 1,  \
+                 global_size, global_size, sigma, ksize, kernel);  \
+    global_size[0] = (size_t)global_cols;                                     \
+    global_size[1] = (size_t)global_rows;                                     \
     runOclKernel(frame_chain,                                                 \
                  "gaussianblur" #base_type "F32" #interpolate "C1Kernel", 2,  \
                  global_size, local_size, src, rows, cols, kernel, ksize,     \
@@ -122,15 +120,13 @@ void getGaussianKernel(float sigma, int ksize, float* coefficients) {
                  "F32" #base_type #interpolate "C1Kernel",                    \
                  2, global_size, local_size, buffer, cols, rows, kernel,      \
                  ksize, rows*(int)sizeof(float), dst, dst_stride);            \
-    clReleaseMemObject(buffer);                                               \
-    clReleaseMemObject(kernel);                                               \
   }
 
 #define GAUSSIANBLUR_C1_TYPE(base_type, T)                                    \
   RetCode gaussianblurC1##base_type(                                          \
       const cl_mem src, int rows, int cols, int src_stride, int ksize,        \
-      float sigma, cl_mem dst, int dst_stride, BorderType border_type,        \
-      cl_context context, cl_command_queue queue) {                           \
+      float sigma, cl_mem dst, cl_mem buffer, cl_mem kernel, int dst_stride, BorderType border_type,        \
+      cl_command_queue queue) {                           \
     PPL_ASSERT(src != nullptr);                                               \
     PPL_ASSERT(dst != nullptr);                                               \
     PPL_ASSERT(rows >= 1 && cols >= 1);                                       \
@@ -141,17 +137,7 @@ void getGaussianKernel(float sigma, int ksize, float* coefficients) {
     PPL_ASSERT(border_type == BORDER_REPLICATE ||                             \
                border_type == BORDER_REFLECT ||                               \
                border_type == BORDER_REFLECT_101)                             \
-    cl_int error_code;                                                        \
-    cl_mem buffer =                                                           \
-        clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,    \
-                       cols * (int)sizeof(float) * rows * (int)sizeof(float), \
-                       NULL, &error_code);                                    \
-    CHECK_ERROR(error_code, clCreateBuffer);                                  \
                                                                               \
-    cl_mem kernel =                                                           \
-        clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY,    \
-                       ksize * (int)sizeof(float), NULL, &error_code);        \
-    CHECK_ERROR(error_code, clCreateBuffer);                                  \
                                                                               \
     FrameChain* frame_chain = getSharedFrameChain();                          \
     frame_chain->setProjectName("cv");                                        \
@@ -171,13 +157,10 @@ void getGaussianKernel(float sigma, int ksize, float* coefficients) {
 
 #define RUN_KERNEL_CN(interpolate, base_type, channels)                      \
   {                                                                          \
-    float* kernel_cpu = new float[ksize];                                     \
-    getGaussianKernel(sigma, ksize, kernel_cpu);                              \
-    error_code = clEnqueueWriteBuffer(queue, kernel, CL_FALSE, 0,             \
-                                      ksize * (int)sizeof(float), kernel_cpu, \
-                                      0, NULL, NULL);                         \
-    CHECK_ERROR(error_code, clEnqueueWriteBuffer);                            \
-    delete[] kernel_cpu;                                                      \
+    global_size[0] = (size_t)1;                                    \
+    runOclKernel(frame_chain,                                                 \
+                 "getGaussianKernel", 1,  \
+                 global_size, global_size, sigma, ksize, kernel);  \
                                                                               \
     ksize = ksize >> 1;                                                       \
     size_t local_size[] = {kBlockDimX0, kBlockDimY0};                         \
@@ -202,14 +185,13 @@ void getGaussianKernel(float sigma, int ksize, float* coefficients) {
                  "F32" #base_type #interpolate "C" #channels "Kernel",       \
                  2, global_size, local_size, buffer, cols, rows, kernel,     \
                  ksize, rows*(int)sizeof(float) * channels, dst, dst_stride);                                       \
-    clReleaseMemObject(buffer);                                              \
   }
 
 #define GAUSSIANBLUR_CN_TYPE(base_type, T, channels)                       \
   RetCode gaussianblurC##channels##base_type(                              \
       const cl_mem src, int rows, int cols, int src_stride, int ksize,     \
-      float sigma, cl_mem dst, int dst_stride, BorderType border_type,     \
-      cl_context context, cl_command_queue queue) {                        \
+      float sigma, cl_mem dst, cl_mem buffer, cl_mem kernel, int dst_stride, BorderType border_type,     \
+      cl_command_queue queue) {                        \
     PPL_ASSERT(src != nullptr);                                            \
     PPL_ASSERT(dst != nullptr);                                            \
     PPL_ASSERT(rows >= 1 && cols >= 1);                                    \
@@ -220,17 +202,6 @@ void getGaussianKernel(float sigma, int ksize, float* coefficients) {
     PPL_ASSERT(border_type == BORDER_REPLICATE ||                          \
                border_type == BORDER_REFLECT ||                            \
                border_type == BORDER_REFLECT_101)                          \
-    cl_int error_code;                                                     \
-    cl_mem buffer = clCreateBuffer(                                        \
-        context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,                \
-        cols * (int)sizeof(float) * rows * (int)sizeof(float) * channels,  \
-        NULL, &error_code);                                                \
-    CHECK_ERROR(error_code, clCreateBuffer);                               \
-                                                                           \
-    cl_mem kernel =                                                        \
-        clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY,  \
-                       ksize * (int)sizeof(float), NULL, &error_code);     \
-    CHECK_ERROR(error_code, clCreateBuffer);                               \
                                                                            \
     FrameChain* frame_chain = getSharedFrameChain();                       \
     frame_chain->setProjectName("cv");                                     \
@@ -259,16 +230,16 @@ GAUSSIANBLUR_CN_TYPE(F32, float, 4)
 
 #define GAUSSIANBLUR_TYPE_C1_TEMPLATE(base_type, T)                           \
   template <>                                                                 \
-  RetCode GaussianBlur<T, 1>(cl_context context, cl_command_queue queue,      \
+  RetCode GaussianBlur<T, 1>(cl_command_queue queue,      \
                              int height, int width, int inWidthStride,        \
                              const cl_mem inData, int ksize, float sigma,     \
-                             int outWidthStride, cl_mem outData, \
+                             int outWidthStride, cl_mem outData, cl_mem buffer, cl_mem kernel, \
                              BorderType border_type) {                        \
     inWidthStride *= sizeof(T);                                               \
     outWidthStride *= sizeof(T);                                              \
     RetCode code = gaussianblurC1##base_type(                                 \
-        inData, height, width, inWidthStride, ksize, sigma, outData,          \
-        outWidthStride, border_type, context, queue);                  \
+        inData, height, width, inWidthStride, ksize, sigma, outData, buffer, kernel,          \
+        outWidthStride, border_type, queue);                  \
                                                                               \
     return code;                                                              \
   }
@@ -276,15 +247,15 @@ GAUSSIANBLUR_CN_TYPE(F32, float, 4)
 #define GAUSSIANBLUR_TYPE_CN_TEMPLATE(base_type, T, channels)            \
   template <>                                                            \
   RetCode GaussianBlur<T, channels>(                                     \
-      cl_context context, cl_command_queue queue, int height, int width, \
+      cl_command_queue queue, int height, int width, \
       int inWidthStride, const cl_mem inData, int ksize, float sigma,    \
-      int outWidthStride, cl_mem outData,                   \
+      int outWidthStride, cl_mem outData, cl_mem buffer, cl_mem kernel,                   \
       BorderType border_type) {                                          \
     inWidthStride *= sizeof(T);                                          \
     outWidthStride *= sizeof(T);                                         \
     RetCode code = gaussianblurC##channels##base_type(                   \
-        inData, height, width, inWidthStride, ksize, sigma, outData,     \
-        outWidthStride, border_type, context, queue);             \
+        inData, height, width, inWidthStride, ksize, sigma, outData, buffer, kernel,     \
+        outWidthStride, border_type, queue);             \
                                                                          \
     return code;                                                         \
   }
