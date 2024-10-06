@@ -15,6 +15,7 @@
  */
 
 #include "ppl/cv/ocl/sepfilter2d.h"
+#include "ppl/cv/ocl/use_memory_pool.h"
 
 #include <time.h>
 #include <sys/time.h>
@@ -69,11 +70,14 @@ void BM_SepFilter2D_ppl_ocl(benchmark::State &state) {
                                     kernel.data, 0, NULL, NULL);
   CHECK_ERROR(error_code, clEnqueueWriteBuffer);
 
-  cl_mem buffer = clCreateBuffer(                                            
-      context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,                    
-      height * (int)sizeof(float) * width * (int)sizeof(float) * channels,      
-      NULL, &error_code);                                                    
-  CHECK_ERROR(error_code, clCreateBuffer);  
+  // cl_mem buffer = clCreateBuffer(                                            
+  //     context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,                    
+  //     height * (int)sizeof(float) * width * (int)sizeof(float) * channels,      
+  //     NULL, &error_code);                                                    
+  // CHECK_ERROR(error_code, clCreateBuffer);  
+  size_t size_width = width * channels * sizeof(float);
+  size_t ceiled_volume = ppl::cv::ocl::ceil2DVolume(size_width, height);
+  ppl::cv::ocl::activateGpuMemoryPool(ceiled_volume);
 
   int iterations = 100;
   struct timeval start, end;
@@ -82,7 +86,7 @@ void BM_SepFilter2D_ppl_ocl(benchmark::State &state) {
   for (int i = 0; i < iterations; i++) {
     ppl::cv::ocl::SepFilter2D<Tsrc, Tdst, channels>(queue, src.rows, src.cols,
       src.step / sizeof(Tsrc), gpu_src, ksize, gpu_kernel, gpu_kernel,
-      dst.step / sizeof(Tsrc), gpu_dst, buffer, delta, border_type);
+      dst.step / sizeof(Tsrc), gpu_dst, delta, border_type);
   }
   clFinish(queue);
 
@@ -91,7 +95,7 @@ void BM_SepFilter2D_ppl_ocl(benchmark::State &state) {
     for (int i = 0; i < iterations; i++) {
       ppl::cv::ocl::SepFilter2D<Tsrc, Tdst, channels>(queue, src.rows, src.cols,
         src.step / sizeof(Tsrc), gpu_src, ksize, gpu_kernel, gpu_kernel,
-        dst.step / sizeof(Tsrc), gpu_dst, buffer, delta, border_type);
+        dst.step / sizeof(Tsrc), gpu_dst, delta, border_type);
     }
     clFinish(queue);
     gettimeofday(&end, NULL);
@@ -101,7 +105,8 @@ void BM_SepFilter2D_ppl_ocl(benchmark::State &state) {
   }
   state.SetItemsProcessed(state.iterations() * 1);
 
-  clReleaseMemObject(buffer);
+  ppl::cv::ocl::shutDownGpuMemoryPool();
+  // clReleaseMemObject(buffer);
   clReleaseMemObject(gpu_src);
   clReleaseMemObject(gpu_dst);
 }

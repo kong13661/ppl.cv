@@ -115,7 +115,6 @@ ppl::common::RetCode SepFilter2D(cl_command_queue queue,
                                  const cl_mem kernelY,
                                  int outWidthStride,
                                  cl_mem outData,
-                                 cl_mem buffer,
                                  float delta = 0.f,
                                  BorderType border_type = BORDER_DEFAULT);
 

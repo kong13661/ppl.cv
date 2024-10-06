@@ -16,15 +16,18 @@
 
 /******************************* crop operation *******************************/
 
-__kernel void equalizeHistKernel(global int* hist, global uint* group_count){
+static global int group_count = 0;
+
+__kernel void equalizeHistKernel(global int* hist, int hist_offset){
     int element_x = get_global_id(0);
+    hist = (global int*)((uchar*)hist + hist_offset);
     hist[element_x] = 0;
-    group_count[0] = 0;
+    group_count = 0;
 }
 
 
 __kernel void equalizeHistKernel0(global const uchar* src, const int cols, 
-    global int* hist, global uint* group_count) {
+    global int* hist, int hist_offset) {
     int element_x = get_global_id(0);
     int index_x;
     int local_x = get_local_id(0);
@@ -32,6 +35,7 @@ __kernel void equalizeHistKernel0(global const uchar* src, const int cols,
     local int local_hist[256];
     local_hist[local_x] = 0;
     barrier(CLK_LOCAL_MEM_FENCE);
+    hist = (global int*)((uchar*)hist + hist_offset);
 
     uchar4 value;
     for (; (element_x << 2) < cols; element_x += offset){
@@ -64,7 +68,7 @@ __kernel void equalizeHistKernel0(global const uchar* src, const int cols,
 
     __local bool is_last_group;
     if (get_local_id(0) == 0){
-        uint local_count = atomic_inc(group_count);
+        uint local_count = atomic_inc(&group_count);
         is_last_group = (local_count == (get_num_groups(0) - 1));
         if (is_last_group){
             int i = 0;
@@ -85,7 +89,7 @@ __kernel void equalizeHistKernel0(global const uchar* src, const int cols,
 }
 
 __kernel void equalizeHistKernel00(global const uchar* src, const int cols, 
-    global uchar* dst, global int* hist) {
+    global uchar* dst, global int* hist, int hist_offset) {
     local uchar local_hist[256];
     int element_x = get_global_id(0);
     int index_x;
@@ -93,6 +97,7 @@ __kernel void equalizeHistKernel00(global const uchar* src, const int cols,
     int offset = get_num_groups(0) * 256;
     local_hist[local_x] = convert_int(hist[local_x]);
     barrier(CLK_LOCAL_MEM_FENCE);
+    hist = (global int*)((uchar*)hist + hist_offset);
 
     uchar4 output;
     uchar4 value;
@@ -120,7 +125,7 @@ __kernel void equalizeHistKernel00(global const uchar* src, const int cols,
 
 __kernel void equalizeHistKernel1(global const uchar* src, int src_stride,
                            const int rows, const int cols,
-                           global int* hist, global uint* group_count) {
+                           global int* hist, int hist_offset) {
     int element_x = get_global_id(0);
     int element_y = get_global_id(1);
     int index_x = element_x << 2;
@@ -130,6 +135,7 @@ __kernel void equalizeHistKernel1(global const uchar* src, int src_stride,
     local int local_hist[256];
     local_hist[index_hist] = 0;
     barrier(CLK_LOCAL_MEM_FENCE);
+    hist = (global int*)((uchar*)hist + hist_offset);
 
     uchar4 value;
     global const uchar *src_ptr;
@@ -167,7 +173,7 @@ __kernel void equalizeHistKernel1(global const uchar* src, int src_stride,
     __local bool is_last_group;
     int elements = cols * rows;
     if (get_local_id(0) == 0 && get_local_id(1) == 0){
-        uint local_count = atomic_inc(group_count);
+        uint local_count = atomic_inc(&group_count);
         is_last_group = (local_count == (get_num_groups(0) * get_num_groups(1) - 1));
         if (is_last_group){
             int i = 0;
@@ -190,7 +196,7 @@ __kernel void equalizeHistKernel1(global const uchar* src, int src_stride,
 
 __kernel void equalizeHistKernel11(global const uchar* src, int src_stride,
     const int rows, const int cols, global uchar* dst, int dst_stride, 
-    global int* hist) {
+    global int* hist, int hist_offset) {
     int element_x = get_global_id(0);
     int element_y = get_global_id(1);
     int index_x = element_x << 2;
@@ -200,6 +206,7 @@ __kernel void equalizeHistKernel11(global const uchar* src, int src_stride,
     local int local_hist[256];
     local_hist[index_hist] = convert_int(hist[index_hist]);
     barrier(CLK_LOCAL_MEM_FENCE);
+    hist = (global int*)((uchar*)hist + hist_offset);
 
     uchar4 output;
     uchar4 value;

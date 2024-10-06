@@ -15,6 +15,7 @@
  */
 
 #include "ppl/cv/ocl/equalizehist.h"
+#include "ppl/cv/ocl/use_memory_pool.h"
 
 #include <time.h>
 #include <sys/time.h>
@@ -56,27 +57,14 @@ void BM_equalizeHist_ppl_ocl(benchmark::State &state) {
                                     src.data, 0, NULL, NULL);
   CHECK_ERROR(error_code, clEnqueueWriteBuffer);
 
-  cl_mem hist = clCreateBuffer(context,
-                               CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
-                               256 * sizeof(int),
-                               NULL,
-                               &error_code);
-  CHECK_ERROR(error_code, clCreateBuffer);
-
-  cl_mem group_count = clCreateBuffer(context,
-                               CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
-                               sizeof(int),
-                               NULL,
-                               &error_code);
-  CHECK_ERROR(error_code, clCreateBuffer);
-
   int iterations = 100;
   struct timeval start, end;
+  ppl::cv::ocl::activateGpuMemoryPool(1024);
 
   // Warm up the GPU.
   for (int i = 0; i < iterations; i++) {
     ppl::cv::ocl::equalizeHist(queue, src.rows, src.cols,
-        src.step / sizeof(uchar), gpu_src, dst.step / sizeof(uchar), gpu_dst, hist, group_count);
+        src.step / sizeof(uchar), gpu_src, dst.step / sizeof(uchar), gpu_dst);
   }
   clFinish(queue);
 
@@ -84,7 +72,7 @@ void BM_equalizeHist_ppl_ocl(benchmark::State &state) {
     gettimeofday(&start, NULL);
     for (int i = 0; i < iterations; i++) {
       ppl::cv::ocl::equalizeHist(queue, src.rows, src.cols,
-          src.step / sizeof(uchar), gpu_src, dst.step / sizeof(uchar), gpu_dst, hist, group_count);
+          src.step / sizeof(uchar), gpu_src, dst.step / sizeof(uchar), gpu_dst);
     }
     clFinish(queue);
     gettimeofday(&end, NULL);
@@ -94,6 +82,7 @@ void BM_equalizeHist_ppl_ocl(benchmark::State &state) {
   }
   state.SetItemsProcessed(state.iterations() * 1);
 
+  ppl::cv::ocl::shutDownGpuMemoryPool();
   clReleaseMemObject(gpu_src);
   clReleaseMemObject(gpu_dst);
 }

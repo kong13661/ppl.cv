@@ -114,8 +114,6 @@ ppl::common::RetCode GaussianBlur(cl_command_queue queue,
                                   float sigma,
                                   int outWidthStride,
                                   cl_mem outData,
-                                  cl_mem buffer,
-                                  cl_mem kernel,
                                   BorderType border_type = BORDER_DEFAULT);
 
 }  // namespace ocl

@@ -15,6 +15,7 @@
  */
 
 #include "ppl/cv/ocl/sepfilter2d.h"
+#include "utility/use_memory_pool.h"
 
 #include "ppl/common/ocl/pplopencl.h"
 #include "utility/utility.hpp"
@@ -46,11 +47,27 @@ namespace ocl {
     global_size[0] = (size_t)global_cols;                                      \
     global_size[1] = (size_t)global_rows;                                      \
     frame_chain->setCompileOptions("-D " #interpolate "_SEP_C1");     \
+    cl_mem buffer;                                                                         \
+    GpuMemoryBlock buffer_block;                                                           \
+    buffer_block.offset = 0;\
+    if (memoryPoolUsed()) {                                                                \
+      pplOclMalloc(buffer_block, rows * (int)sizeof(float) *                               \
+                   cols);                                          \
+      buffer = buffer_block.data;                                                          \
+    }                                                                                      \
+    else {                                                                                 \
+      cl_int error_code = 0;                                                               \
+      buffer = clCreateBuffer(                                                             \
+          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,            \
+          rows * (int)sizeof(float) * cols,                                                \
+          NULL, &error_code);                                                              \
+      CHECK_ERROR(error_code, clCreateBuffer);                                             \
+    }                                                                                      \
     runOclKernel(frame_chain,                                                  \
                  "sepfilter2d" #base_type_src "F32" #interpolate "C1Kernel",   \
-                 2, global_size, local_size, src, rows, cols, kernel_x, ksize, \
+                 2, global_size, local_size, src, 0, rows, cols, kernel_x, ksize, \
                  src_stride, buffer, rows*(int)sizeof(float), is_symmetric,    \
-                 0.f);                                                       \
+                 0.f, (int)buffer_block.offset);                                                       \
                                                                                \
     global_cols = divideUp(cols, base_type_dst##DIV, base_type_dst##OFFSET);   \
     global_rows = divideUp(rows, base_type_dst##DIV, base_type_dst##OFFSET);   \
@@ -59,15 +76,21 @@ namespace ocl {
     runOclKernel(frame_chain,                                                  \
                  "sepfilter2d"                                                 \
                  "F32" #base_type_dst #interpolate "C1Kernel",                 \
-                 2, global_size, local_size, buffer, cols, rows, kernel_y,     \
+                 2, global_size, local_size, buffer, (int)buffer_block.offset, cols, rows, kernel_y,     \
                  ksize, rows*(int)sizeof(float), dst, dst_stride,              \
-                 is_symmetric, delta);                                         \
+                 is_symmetric, delta, 0);                                         \
+    if (memoryPoolUsed()) {                                                     \
+      pplOclFree(buffer_block);                                                 \
+    }                                                                           \
+    else {                                                                      \
+      clReleaseMemObject(buffer);                                               \
+    }                                                                           \
   }
 
 #define SEPFILTER2D_C1_TYPE(base_type_src, Tsrc, base_type_dst, Tdst)          \
   RetCode sepfilter2dC1##base_type_src##base_type_dst(                         \
       const cl_mem src, int rows, int cols, int src_stride,                    \
-      const cl_mem kernel_x, const cl_mem kernel_y, int ksize, cl_mem dst, cl_mem buffer,     \
+      const cl_mem kernel_x, const cl_mem kernel_y, int ksize, cl_mem dst,     \
       int dst_stride, float delta, BorderType border_type, \
       cl_command_queue queue) {                                                \
     PPL_ASSERT(src != nullptr);                                                \
@@ -108,9 +131,9 @@ namespace ocl {
     runOclKernel(frame_chain,                                                  \
                  "sepfilter2d" #base_type_src "F32" #interpolate "C" #channels \
                  "Kernel",                                                     \
-                 2, global_size, local_size, src, rows, cols, kernel_x, ksize, \
+                 2, global_size, local_size, src, 0, rows, cols, kernel_x, ksize, \
                  src_stride, buffer, rows*(int)sizeof(float) * channels, is_symmetric,    \
-                 0.f);                                                         \
+                 0.f, (int)buffer_block.offset);                                                         \
                                                                                \
     global_cols =                                                              \
         divideUp(cols, base_type_dst##DIV_CN, base_type_dst##OFFSET_CN);       \
@@ -120,16 +143,22 @@ namespace ocl {
     runOclKernel(frame_chain,                                                  \
                  "sepfilter2d"                                                 \
                  "F32" #base_type_dst #interpolate "C" #channels "Kernel",     \
-                 2, global_size, local_size, buffer, cols, rows, kernel_y,     \
+                 2, global_size, local_size, buffer, (int)buffer_block.offset, cols, rows, kernel_y,     \
                  ksize, rows*(int)sizeof(float) * channels, dst, dst_stride,              \
-                 is_symmetric, delta);                                         \
+                 is_symmetric, delta, 0);                                         \
+    if (memoryPoolUsed()) {                                                     \
+      pplOclFree(buffer_block);                                                 \
+    }                                                                           \
+    else {                                                                      \
+      clReleaseMemObject(buffer);                                               \
+    }                                                                           \
   }
 
 #define SEPFILTER2D_CN_TYPE(base_type_src, Tsrc, base_type_dst, Tdst,          \
                             channels)                                          \
   RetCode sepfilter2dC##channels##base_type_src##base_type_dst(                \
       const cl_mem src, int rows, int cols, int src_stride,                    \
-      const cl_mem kernel_x, const cl_mem kernel_y, int ksize, cl_mem dst, cl_mem buffer,     \
+      const cl_mem kernel_x, const cl_mem kernel_y, int ksize, cl_mem dst,     \
       int dst_stride, float delta, BorderType border_type, \
       cl_command_queue queue) {                                                \
     PPL_ASSERT(src != nullptr);                                                \
@@ -149,6 +178,23 @@ namespace ocl {
     size_t global_size[2];                                                     \
     int is_symmetric = ksize & 1;                                              \
     ksize = ksize >> 1;                                                        \
+\
+    cl_mem buffer;                                                                    \
+    GpuMemoryBlock buffer_block;                                                      \
+    buffer_block.offset = 0;\
+    if (memoryPoolUsed()) {                                                           \
+      pplOclMalloc(buffer_block, rows * (int)sizeof(float) *                          \
+                   cols * channels);                                     \
+      buffer = buffer_block.data;                                                     \
+    }                                                                                 \
+    else {                                                                            \
+      cl_int error_code = 0;                                                          \
+      buffer = clCreateBuffer(                                                        \
+          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,       \
+          rows * (int)sizeof(float) * cols * channels,           \
+          NULL, &error_code);                                                         \
+      CHECK_ERROR(error_code, clCreateBuffer);                                        \
+    }                                                                                 \
                                                                                \
     if (border_type == BORDER_REPLICATE)                                       \
       RUN_KERNEL_CN(interpolateReplicateBorder, base_type_src, base_type_dst,  \
@@ -176,13 +222,13 @@ SEPFILTER2D_CN_TYPE(F32, float, F32, float, 4)
   RetCode SepFilter2D<Tsrc, Tdst, 1>(                                          \
       cl_command_queue queue, int height, int width,       \
       int inWidthStride, const cl_mem inData, int ksize, const cl_mem kernelX, \
-      const cl_mem kernelY, int outWidthStride, cl_mem outData, cl_mem buffer, float delta,   \
+      const cl_mem kernelY, int outWidthStride, cl_mem outData, float delta,   \
       BorderType border_type) {                                                \
     inWidthStride *= sizeof(Tsrc);                                             \
     outWidthStride *= sizeof(Tdst);                                            \
     RetCode code = sepfilter2dC1##base_type_src##base_type_dst(                \
         inData, height, width, inWidthStride, kernelX, kernelY, ksize,         \
-        outData, buffer, outWidthStride, delta, border_type, queue);          \
+        outData, outWidthStride, delta, border_type, queue);          \
                                                                                \
     return code;                                                               \
   }
@@ -193,13 +239,13 @@ SEPFILTER2D_CN_TYPE(F32, float, F32, float, 4)
   RetCode SepFilter2D<Tsrc, Tdst, channels>(                                          \
       cl_command_queue queue, int height, int width,       \
       int inWidthStride, const cl_mem inData, int ksize, const cl_mem kernelX, \
-      const cl_mem kernelY, int outWidthStride, cl_mem outData, cl_mem buffer, float delta,   \
+      const cl_mem kernelY, int outWidthStride, cl_mem outData, float delta,   \
       BorderType border_type) {                                                \
     inWidthStride *= sizeof(Tsrc);                                             \
     outWidthStride *= sizeof(Tdst);                                            \
     RetCode code = sepfilter2dC##channels##base_type_src##base_type_dst(       \
         inData, height, width, inWidthStride, kernelX, kernelY, ksize,         \
-        outData, buffer, outWidthStride, delta, border_type, queue);          \
+        outData, outWidthStride, delta, border_type, queue);          \
                                                                                \
     return code;                                                               \
   }

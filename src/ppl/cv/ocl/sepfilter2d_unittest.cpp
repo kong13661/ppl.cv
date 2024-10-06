@@ -15,6 +15,7 @@
  */
 
 #include "ppl/cv/ocl/sepfilter2d.h"
+#include "ppl/cv/ocl/use_memory_pool.h"
 
 #include <tuple>
 #include <sstream>
@@ -135,11 +136,14 @@ bool PplCvOclSepfilter2dToTest<Tsrc, Tdst, channels>::apply() {
                                     kernel0.data, 0, NULL, NULL);
   CHECK_ERROR(error_code, clEnqueueWriteBuffer);
 
-  cl_mem buffer = clCreateBuffer(                                            
-      context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,                    
-      size.height * (int)sizeof(float) * size.width * (int)sizeof(float) * channels,      
-      NULL, &error_code);                                                    
-  CHECK_ERROR(error_code, clCreateBuffer);                                   
+  // cl_mem buffer = clCreateBuffer(                                            
+  //     context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,                    
+  //     size.height * (int)sizeof(float) * size.width * (int)sizeof(float) * channels,      
+  //     NULL, &error_code);                                                    
+  // CHECK_ERROR(error_code, clCreateBuffer);                                   
+  size_t size_width = size.width * channels * sizeof(float);
+  size_t ceiled_volume = ppl::cv::ocl::ceil2DVolume(size_width, size.height);
+  ppl::cv::ocl::activateGpuMemoryPool(ceiled_volume);
 
   int src_bytes1 = size.height * size.width * channels * sizeof(Tsrc);
   int kernel_bytes1 = ksize * sizeof(float);
@@ -192,11 +196,11 @@ bool PplCvOclSepfilter2dToTest<Tsrc, Tdst, channels>::apply() {
 
   ppl::cv::ocl::SepFilter2D<Tsrc, Tdst, channels>(
       queue, src.rows, src.cols, src.step / sizeof(Tsrc), gpu_src, ksize,
-      gpu_kernel, gpu_kernel, dst.step / sizeof(Tdst), gpu_dst, buffer, delta,
+      gpu_kernel, gpu_kernel, dst.step / sizeof(Tdst), gpu_dst, delta,
       border_type);
   ppl::cv::ocl::SepFilter2D<Tsrc, Tdst, channels>(
       queue, size.height, size.width, size.width * channels, gpu_input, ksize,
-      gpu_input_kernel, gpu_input_kernel, size.width * channels, gpu_output, buffer,
+      gpu_input_kernel, gpu_input_kernel, size.width * channels, gpu_output,
       delta, border_type);
   error_code = clEnqueueReadBuffer(queue, gpu_dst, CL_TRUE, 0, dst_bytes0,
                                    dst.data, 0, NULL, NULL);
@@ -223,13 +227,14 @@ bool PplCvOclSepfilter2dToTest<Tsrc, Tdst, channels>::apply() {
                                        NULL);
   CHECK_ERROR(error_code, clEnqueueUnmapMemObject);
 
+  ppl::cv::ocl::shutDownGpuMemoryPool();
   clReleaseMemObject(gpu_src);
   clReleaseMemObject(gpu_kernel);
   clReleaseMemObject(gpu_dst);
   clReleaseMemObject(gpu_input);
   clReleaseMemObject(gpu_input_kernel);
   clReleaseMemObject(gpu_output);
-  clReleaseMemObject(buffer);
+  // clReleaseMemObject(buffer);
 
   return (identity0 && identity1);
 }

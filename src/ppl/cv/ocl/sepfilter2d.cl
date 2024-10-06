@@ -163,9 +163,9 @@
                                    cols_load, rows_load, interpolation)      \
   __kernel void                                                              \
       sepfilter2d##base_type_src##base_type_dst##interpolation##C1Kernel(    \
-          global const Tsrc* src, int rows, int cols,                        \
+          global const Tsrc* src, int src_offset, int rows, int cols,                        \
           global const float* filter_kernel, int radius, int src_stride,     \
-          global Tdst* dst, int dst_stride, int is_symmetric, float delta) { \
+          global Tdst* dst, int dst_stride, int is_symmetric, float delta, int dst_offset) { \
     int element_x = get_global_id(0);                                        \
     int element_y = get_global_id(1);                                        \
     int group_x = get_group_id(0);                                           \
@@ -174,6 +174,8 @@
     if (index_x >= cols || index_y >= rows) {                                \
       return;                                                                \
     }                                                                        \
+    src = (global const Tsrc*)((uchar*)src + src_offset);                            \
+    dst = (global Tdst*)((uchar*)dst + dst_offset);                                  \
                                                                              \
     src = (global const Tsrc*)((global uchar*)src + index_y * src_stride);          \
     int remain_cols = cols - index_x, remain_rows = rows - index_y;          \
@@ -267,9 +269,9 @@
                                    channels, rows_load, interpolation)               \
   __kernel void                                                                      \
       sepfilter2d##base_type_src##base_type_dst##interpolation##C##channels##Kernel( \
-          global const Tsrc* src, int rows, int cols,                                \
+          global const Tsrc* src, int src_offset, int rows, int cols,                                \
           global const float* filter_kernel, int radius, int src_stride,             \
-          global Tdst* dst, int dst_stride, int is_symmetric, float delta) {         \
+          global Tdst* dst, int dst_stride, int is_symmetric, float delta, int dst_offset) {         \
     int element_x = get_global_id(0);                                                \
     int element_y = get_global_id(1);                                                \
     int group_x = get_group_id(0);                                                   \
@@ -279,6 +281,8 @@
       return;                                                                        \
     }                                                                                \
                                                                                      \
+    src = (global const Tsrc*)((uchar*)src + src_offset);                            \
+    dst = (global Tdst*)((uchar*)dst + dst_offset);                                  \
     src = (global const Tsrc*)((global uchar*)src + index_y * src_stride);                  \
     int remain_rows = rows - index_y;                                                \
     int bottom = index_x - radius;                                                   \

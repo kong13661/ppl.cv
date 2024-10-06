@@ -15,6 +15,7 @@
  */
 
 #include "ppl/cv/ocl/boxfilter.h"
+#include "utility/use_memory_pool.h"
 
 #include "ppl/common/ocl/pplopencl.h"
 #include "utility/utility.hpp"
@@ -50,10 +51,26 @@ namespace ocl {
     global_size[0] = (size_t)global_cols;                                     \
     global_size[1] = (size_t)global_rows;                                     \
     frame_chain->setCompileOptions("-D BOXFILTER_" #base_type "1C");       \
+    cl_mem buffer;                                                                         \
+    GpuMemoryBlock buffer_block;                                                           \
+    buffer_block.offset = 0;\
+    if (memoryPoolUsed()) {                                                                \
+      pplOclMalloc(buffer_block, rows * (int)sizeof(float) *                               \
+                   cols);                                          \
+      buffer = buffer_block.data;                                                          \
+    }                                                                                      \
+    else {                                                                                 \
+      cl_int error_code = 0;                                                               \
+      buffer = clCreateBuffer(                                                             \
+          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,            \
+          rows * (int)sizeof(float) * cols,                                                \
+          NULL, &error_code);                                                              \
+      CHECK_ERROR(error_code, clCreateBuffer);                                             \
+    }                                                                                      \
     runOclKernel(frame_chain,                                                 \
                  "boxfilter" #base_type "F32" #interpolate "C1Kernel", 2,  \
-                 global_size, local_size, src, rows, cols, ksize_x >> 1,     \
-                 src_stride, buffer, rows*(int)sizeof(float), ksize_x & 1, 0, weight);  \
+                 global_size, local_size, src, 0, rows, cols, ksize_x >> 1,     \
+                 src_stride, buffer, rows*(int)sizeof(float), ksize_x & 1, 0, weight, (int)buffer_block.offset);  \
                                                                               \
     global_cols = divideUp(cols, base_type##DIV, base_type##OFFSET);          \
     global_rows = divideUp(rows, base_type##DIV, base_type##OFFSET);          \
@@ -62,14 +79,20 @@ namespace ocl {
     runOclKernel(frame_chain,                                                 \
                  "boxfilter"                                               \
                  "F32" #base_type #interpolate "C1Kernel",                    \
-                 2, global_size, local_size, buffer, cols, rows, ksize_y >> 1,     \
-                 rows*(int)sizeof(float), dst, dst_stride, ksize_y & 1, (int)normalize, weight);            \
+                 2, global_size, local_size, buffer, (int)buffer_block.offset, cols, rows, ksize_y >> 1,     \
+                 rows*(int)sizeof(float), dst, dst_stride, ksize_y & 1, (int)normalize, weight, 0);            \
+    if (memoryPoolUsed()) {                                                                \
+      pplOclFree(buffer_block);                                                            \
+    }                                                                                      \
+    else {                                                                                 \
+      clReleaseMemObject(buffer);                                                          \
+    }                                                                                      \
   }
 
 #define BOXFILTER_C1_TYPE(base_type, T)                                    \
   RetCode boxfilterC1##base_type(                                          \
       const cl_mem src, int rows, int cols, int src_stride, int ksize_x, int ksize_y,        \
-      bool normalize, cl_mem dst, cl_mem buffer, int dst_stride, BorderType border_type,        \
+      bool normalize, cl_mem dst, int dst_stride, BorderType border_type,        \
       cl_command_queue queue) {                           \
     PPL_ASSERT(src != nullptr);                                               \
     PPL_ASSERT(dst != nullptr);                                               \
@@ -109,8 +132,8 @@ namespace ocl {
     runOclKernel(                                                              \
         frame_chain,                                                           \
         "boxfilter" #base_type "F32" #interpolate "C" #channels "Kernel", 2,   \
-        global_size, local_size, src, rows, cols, ksize_x >> 1, src_stride,    \
-        buffer, rows * (int)sizeof(float) * channels, ksize_x & 1, 0, weight); \
+        global_size, local_size, src, 0, rows, cols, ksize_x >> 1, src_stride,    \
+        buffer, rows * (int)sizeof(float) * channels, ksize_x & 1, 0, weight, (int)buffer_block.offset); \
                                                                                \
     global_cols = divideUp(cols, base_type##DIV_CN, base_type##OFFSET_CN);     \
     global_rows = rows;                                                        \
@@ -119,15 +142,21 @@ namespace ocl {
     runOclKernel(frame_chain,                                                  \
                  "boxfilter"                                                   \
                  "F32" #base_type #interpolate "C" #channels "Kernel",         \
-                 2, global_size, local_size, buffer, cols, rows, ksize_y >> 1, \
+                 2, global_size, local_size, buffer, (int)buffer_block.offset, cols, rows, ksize_y >> 1, \
                  rows * (int)sizeof(float) * channels, dst, dst_stride,        \
-                 ksize_y & 1, (int)normalize, weight);                         \
+                 ksize_y & 1, (int)normalize, weight, 0);                         \
+    if (memoryPoolUsed()) {                                                     \
+      pplOclFree(buffer_block);                                                 \
+    }                                                                           \
+    else {                                                                      \
+      clReleaseMemObject(buffer);                                               \
+    }                                                                           \
   }
 
 #define BOXFILTER_CN_TYPE(base_type, T, channels)                       \
   RetCode boxfilterC##channels##base_type(                              \
       const cl_mem src, int rows, int cols, int src_stride, int ksize_x, int ksize_y,     \
-      bool normalize, cl_mem dst, cl_mem buffer, int dst_stride, BorderType border_type,     \
+      bool normalize, cl_mem dst, int dst_stride, BorderType border_type,     \
       cl_command_queue queue) {                        \
     PPL_ASSERT(src != nullptr);                                            \
     PPL_ASSERT(dst != nullptr);                                            \
@@ -145,6 +174,23 @@ namespace ocl {
                                                                            \
     int global_cols, global_rows;                                          \
     size_t global_size[2];                                                 \
+\
+    cl_mem buffer;                                                                    \
+    GpuMemoryBlock buffer_block;                                                      \
+    buffer_block.offset = 0;\
+    if (memoryPoolUsed()) {                                                           \
+      pplOclMalloc(buffer_block, rows * (int)sizeof(float) *                          \
+                   cols * channels);                                     \
+      buffer = buffer_block.data;                                                     \
+    }                                                                                 \
+    else {                                                                            \
+      cl_int error_code = 0;                                                          \
+      buffer = clCreateBuffer(                                                        \
+          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,       \
+          rows * (int)sizeof(float) * cols * channels,           \
+          NULL, &error_code);                                                         \
+      CHECK_ERROR(error_code, clCreateBuffer);                                        \
+    }                                                                                 \
                                                                            \
     if (border_type == BORDER_REPLICATE)                                   \
       RUN_KERNEL_CN(interpolateReplicateBorder, base_type, channels)       \
@@ -169,12 +215,12 @@ BOXFILTER_CN_TYPE(F32, float, 4)
   RetCode BoxFilter<T, 1>(cl_command_queue queue,      \
                              int height, int width, int inWidthStride,        \
                              const cl_mem inData, int ksize_x, int ksize_y, bool normalize,     \
-                             int outWidthStride, cl_mem outData, cl_mem buffer, \
+                             int outWidthStride, cl_mem outData, \
                              BorderType border_type) {                        \
     inWidthStride *= sizeof(T);                                               \
     outWidthStride *= sizeof(T);                                              \
     RetCode code = boxfilterC1##base_type(                                 \
-        inData, height, width, inWidthStride, ksize_x, ksize_y, normalize, outData, buffer,          \
+        inData, height, width, inWidthStride, ksize_x, ksize_y, normalize, outData,          \
         outWidthStride, border_type, queue);                  \
                                                                               \
     return code;                                                              \
@@ -185,12 +231,12 @@ BOXFILTER_CN_TYPE(F32, float, 4)
   RetCode BoxFilter<T, channels>(                                     \
       cl_command_queue queue, int height, int width, \
       int inWidthStride, const cl_mem inData, int ksize_x, int ksize_y, bool normalize,    \
-      int outWidthStride, cl_mem outData, cl_mem buffer,                   \
+      int outWidthStride, cl_mem outData,                   \
       BorderType border_type) {                                          \
     inWidthStride *= sizeof(T);                                          \
     outWidthStride *= sizeof(T);                                         \
     RetCode code = boxfilterC##channels##base_type(                   \
-        inData, height, width, inWidthStride, ksize_x, ksize_y, normalize, outData, buffer,     \
+        inData, height, width, inWidthStride, ksize_x, ksize_y, normalize, outData,     \
         outWidthStride, border_type, queue);             \
                                                                          \
     return code;                                                         \

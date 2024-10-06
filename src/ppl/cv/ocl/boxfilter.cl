@@ -73,7 +73,7 @@
     BOXFILTER_ELEMENT##i(T, src_array, output, j)                     \
     for (int k = 0; k < i; k++) {                                       \
       vstore##j(output[k], element_y, dst);                             \
-      dst = (global T*)((uchar*)dst + dst_stride);                      \
+      dst = (global T*)((global uchar*)dst + dst_stride);                      \
     }                                                                   \
   }
 
@@ -83,7 +83,7 @@
     BOXFILTER_ELEMENT##i(T, src_array, output, j)                       \
     for (int k = 0; k < i; k++) {                                         \
       VSTORE_REMAIN_ROWS##j(output[k], rows_load)                         \
-      dst = (global T*)((uchar*)dst + dst_stride);                        \
+      dst = (global T*)((global uchar*)dst + dst_stride);                        \
     }                                                                     \
   }
 
@@ -163,19 +163,21 @@
                                  cols_load, rows_load, interpolation)         \
   __kernel void                                                               \
       boxfilter##base_type_src##base_type_dst##interpolation##C1Kernel(       \
-          global const Tsrc* src, int rows, int cols, int radius,             \
+          global const Tsrc* src, int src_offset, int rows, int cols, int radius,             \
           int src_stride, global Tdst* dst, int dst_stride, int is_symmetric, \
-          int normalize, float weight) {                                             \
+          int normalize, float weight, int dst_offset) {                                             \
     int element_x = get_global_id(0);                                         \
     int element_y = get_global_id(1);                                         \
     int group_x = get_group_id(0);                                            \
     int group_y = get_group_id(1);                                            \
     int index_x = element_x * cols_load, index_y = element_y * rows_load;     \
+    src = (global const Tsrc*)((global uchar*)src + src_offset);                            \
+    dst = (global Tdst*)((global uchar*)dst + dst_offset);                                  \
     if (index_x >= cols || index_y >= rows) {                                 \
       return;                                                                 \
     }                                                                         \
                                                                               \
-    src = (global const Tsrc*)((uchar*)src + index_y * src_stride);           \
+    src = (global const Tsrc*)((global uchar*)src + index_y * src_stride);           \
     int remain_cols = cols - index_x, remain_rows = rows - index_y;           \
     int bottom = index_x - radius;                                            \
     int top = index_x + radius;                                               \
@@ -213,7 +215,7 @@
           ((float##cols_load*)input_value+i)[0] += value;                                            \
         }                                                                     \
       }                                                                       \
-      src = (global const Tsrc*)((uchar*)src + src_stride);                   \
+      src = (global const Tsrc*)((global uchar*)src + src_stride);                   \
     }                                                                         \
     if (normalize) {                                                   \
       for (int i = 0; i < min(remain_rows, rows_load); i++) {                 \
@@ -221,7 +223,7 @@
       }                                                                       \
     }                                                                         \
                                                                               \
-    dst = (global Tdst*)((uchar*)dst + dst_stride * index_x);                 \
+    dst = (global Tdst*)((global uchar*)dst + dst_stride * index_x);                 \
     BOXFILTER_C1_RAMAIN_COL##rows_load(Tdst, cols_load, rows_load)            \
   }
 // #endif
@@ -262,19 +264,21 @@
                                  channels, rows_load, interpolation)               \
   __kernel void                                                                    \
       boxfilter##base_type_src##base_type_dst##interpolation##C##channels##Kernel( \
-          global const Tsrc* src, int rows, int cols, int radius,                  \
+          global const Tsrc* src, int src_offset, int rows, int cols, int radius,                  \
           int src_stride, global Tdst* dst, int dst_stride, int is_symmetric,      \
-          int normalize, float weight) {                                                  \
+          int normalize, float weight, int dst_offset) {                                                  \
     int element_x = get_global_id(0);                                              \
     int element_y = get_global_id(1);                                              \
     int group_x = get_group_id(0);                                                 \
     int group_y = get_group_id(1);                                                 \
     int index_x = element_x, index_y = element_y * rows_load;                      \
+    src = (global const Tsrc*)((global uchar*)src + src_offset);                            \
+    dst = (global Tdst*)((global uchar*)dst + dst_offset);                                  \
     if (index_x >= cols || index_y >= rows) {                                      \
       return;                                                                      \
     }                                                                              \
                                                                                    \
-    src = (global const Tsrc*)((uchar*)src + index_y * src_stride);                \
+    src = (global const Tsrc*)((global uchar*)src + index_y * src_stride);                \
     int remain_rows = rows - index_y;                                              \
     int bottom = index_x - radius;                                                 \
     int top = index_x + radius;                                                    \
@@ -308,7 +312,7 @@
               convert_float##channels(vload##channels(data_index, src));           \
         }                                                                          \
       }                                                                            \
-      src = (global const Tsrc*)((uchar*)src + src_stride);                        \
+      src = (global const Tsrc*)((global uchar*)src + src_stride);                        \
     }                                                                              \
     if (normalize) {                                                        \
       for (int i = 0; i < min(remain_rows, rows_load); i++) {                      \
@@ -316,7 +320,7 @@
       }                                                                            \
     }                                                                              \
                                                                                    \
-    dst = (global Tdst*)((uchar*)dst + dst_stride * index_x);                      \
+    dst = (global Tdst*)((global uchar*)dst + dst_stride * index_x);                      \
     BOXFILTER_SAVE_CHANNEL##rows_load(Tdst, rows_load, channels)                   \
   }
 // #endif

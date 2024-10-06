@@ -115,7 +115,6 @@ ppl::common::RetCode BoxFilter(cl_command_queue queue,
                                   bool normalize,
                                   int outWidthStride,
                                   cl_mem outData,
-                                  cl_mem buffer,
                                   BorderType border_type = BORDER_DEFAULT);
 
 }  // namespace ocl

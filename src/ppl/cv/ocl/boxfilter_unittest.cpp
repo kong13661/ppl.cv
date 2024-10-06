@@ -15,6 +15,7 @@
  */
 
 #include "ppl/cv/ocl/boxfilter.h"
+#include "ppl/cv/ocl/use_memory_pool.h"
 
 #include <tuple>
 #include <sstream>
@@ -141,11 +142,14 @@ bool PplCvOclBoxFilterToTest<T, channels>::apply() {
                                      dst_bytes1, NULL, &error_code);
   CHECK_ERROR(error_code, clCreateBuffer);
 
-  cl_mem buffer = clCreateBuffer(                                            
-      context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,                    
-      size.height * (int)sizeof(float) * size.width * (int)sizeof(float) * channels,      
-      NULL, &error_code);                                                    
-  CHECK_ERROR(error_code, clCreateBuffer);      
+  // cl_mem buffer = clCreateBuffer(                                            
+  //     context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,                    
+  //     size.height * (int)sizeof(float) * size.width * (int)sizeof(float) * channels,      
+  //     NULL, &error_code);                                                    
+  // CHECK_ERROR(error_code, clCreateBuffer);      
+  size_t size_width = size.width * channels * sizeof(float);
+  size_t ceiled_volume = ppl::cv::ocl::ceil2DVolume(size_width, size.height);
+  ppl::cv::ocl::activateGpuMemoryPool(ceiled_volume);
 
   T* input = (T*)clEnqueueMapBuffer(queue, gpu_input, CL_TRUE, CL_MAP_WRITE,
                                     0, src_bytes1, 0, NULL, NULL, &error_code);
@@ -171,11 +175,11 @@ bool PplCvOclBoxFilterToTest<T, channels>::apply() {
 
   ppl::cv::ocl::BoxFilter<T, channels>(
       queue, src.rows, src.cols, src.step / sizeof(T), gpu_src, ksize_x, ksize_y,
-      normalize, dst.step / sizeof(T), gpu_dst, buffer,  
+      normalize, dst.step / sizeof(T), gpu_dst,  
       border_type);
   ppl::cv::ocl::BoxFilter<T, channels>(
       queue, size.height, size.width, size.width * channels, gpu_input, ksize_x, ksize_y,
-      normalize, size.width * channels, gpu_output, buffer, 
+      normalize, size.width * channels, gpu_output, 
       border_type);
   error_code = clEnqueueReadBuffer(queue, gpu_dst, CL_TRUE, 0, dst_bytes0,
                                    dst.data, 0, NULL, NULL);
@@ -202,11 +206,12 @@ bool PplCvOclBoxFilterToTest<T, channels>::apply() {
                                        NULL);
   CHECK_ERROR(error_code, clEnqueueUnmapMemObject);
 
+  ppl::cv::ocl::shutDownGpuMemoryPool();
   clReleaseMemObject(gpu_src);
   clReleaseMemObject(gpu_dst);
   clReleaseMemObject(gpu_input);
   clReleaseMemObject(gpu_output);
-  clReleaseMemObject(buffer);
+  // clReleaseMemObject(buffer);
 
   return (identity0 && identity1);
 }
