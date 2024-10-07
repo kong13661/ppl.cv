@@ -15,6 +15,7 @@
  */
 
 #include "ppl/cv/ocl/gaussianblur.h"
+#include "ppl/cv/ocl/use_memory_pool.h"
 
 #include <time.h>
 #include <sys/time.h>
@@ -59,17 +60,21 @@ void BM_GaussianBlur_ppl_ocl(benchmark::State &state) {
                                     src.data, 0, NULL, NULL);
   CHECK_ERROR(error_code, clEnqueueWriteBuffer);
 
-  cl_mem buffer = clCreateBuffer(                                            
-      context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,                    
-      height * (int)sizeof(float) * width * (int)sizeof(float) * channels,      
-      NULL, &error_code);                                                    
-  CHECK_ERROR(error_code, clCreateBuffer);                                   
+  // cl_mem buffer = clCreateBuffer(                                            
+  //     context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,                    
+  //     height * (int)sizeof(float) * width * (int)sizeof(float) * channels,      
+  //     NULL, &error_code);                                                    
+  // CHECK_ERROR(error_code, clCreateBuffer);                                   
 
-  cl_mem kernel = clCreateBuffer(                                            
-      context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,                    
-      ksize * (int)sizeof(float),      
-      NULL, &error_code);                                                    
-  CHECK_ERROR(error_code, clCreateBuffer);    
+  size_t size_width = width * channels * sizeof(float);
+  size_t ceiled_volume = ppl::cv::ocl::ceil2DVolume(size_width, height);
+  ppl::cv::ocl::activateGpuMemoryPool(ceiled_volume + ppl::cv::ocl::ceil1DVolume(ksize * sizeof(float)));
+
+  // cl_mem kernel = clCreateBuffer(                                            
+  //     context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,                    
+  //     ksize * (int)sizeof(float),      
+  //     NULL, &error_code);                                                    
+  // CHECK_ERROR(error_code, clCreateBuffer);    
 
   int iterations = 100;
   struct timeval start, end;
@@ -78,7 +83,7 @@ void BM_GaussianBlur_ppl_ocl(benchmark::State &state) {
   for (int i = 0; i < iterations; i++) {
     ppl::cv::ocl::GaussianBlur<T, channels>(
         queue, src.rows, src.cols, src.step / sizeof(T), gpu_src, ksize,
-        sigma, dst.step / sizeof(T), gpu_dst, buffer, kernel,
+        sigma, dst.step / sizeof(T), gpu_dst,
         border_type);
   }
   clFinish(queue);
@@ -88,7 +93,7 @@ void BM_GaussianBlur_ppl_ocl(benchmark::State &state) {
     for (int i = 0; i < iterations; i++) {
       ppl::cv::ocl::GaussianBlur<T, channels>(
           queue, src.rows, src.cols, src.step / sizeof(T), gpu_src, ksize,
-          sigma, dst.step / sizeof(T), gpu_dst, buffer, kernel, 
+          sigma, dst.step / sizeof(T), gpu_dst, 
           border_type);
     }
     clFinish(queue);
@@ -99,10 +104,11 @@ void BM_GaussianBlur_ppl_ocl(benchmark::State &state) {
   }
   state.SetItemsProcessed(state.iterations() * 1);
 
+  ppl::cv::ocl::shutDownGpuMemoryPool();
   clReleaseMemObject(gpu_src);
   clReleaseMemObject(gpu_dst);
-  clReleaseMemObject(buffer);
-  clReleaseMemObject(kernel);
+  // clReleaseMemObject(buffer);
+  // clReleaseMemObject(kernel);
 }
 
 template <typename T, int channels, int ksize, BorderType border_type>

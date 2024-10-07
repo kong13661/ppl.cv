@@ -26,10 +26,6 @@
 #define convert_uchar3 convert_uchar3_sat
 #define convert_uchar4 convert_uchar4_sat
 
-#define AB_BITS 10
-#define AB_SCALE 1024
-#define ROUND_DELTA 512
-
 #define GAUSSIANBLUR_VEC1(src_array, i) \
   src_array[0].INDEX_CONVERT##i
 #define GAUSSIANBLUR_VEC2(src_array, i) \
@@ -77,7 +73,7 @@
     GAUSSIANBLUR_ELEMENT##i(T, src_array, output, j)                     \
     for (int k = 0; k < i; k++) {                                       \
       vstore##j(output[k], element_y, dst);                             \
-      dst = (global T*)((uchar*)dst + dst_stride);                      \
+      dst = (global T*)((global uchar*)dst + dst_stride);                      \
     }                                                                   \
   }
 
@@ -87,7 +83,7 @@
     GAUSSIANBLUR_ELEMENT##i(T, src_array, output, j)                       \
     for (int k = 0; k < i; k++) {                                         \
       VSTORE_REMAIN_ROWS##j(output[k], rows_load)                         \
-      dst = (global T*)((uchar*)dst + dst_stride);                        \
+      dst = (global T*)((global uchar*)dst + dst_stride);                        \
     }                                                                     \
   }
 
@@ -162,10 +158,11 @@
   value.w = convert_float(src_temp[data_index]);
 
 __kernel
-void getGaussianKernel(float sigma, int ksize, global float* coefficients) {
+void getGaussianKernel(float sigma, int ksize, global float* coefficients, int offset) {
   float value = sigma > 0 ? sigma : ((ksize - 1) * 0.5f - 1) * 0.3f + 0.8f;
   float scale_2x = -0.5f / (value * value);
   float sum = 0.f;
+  coefficients = (global float*)((global uchar*)coefficients + offset);
 
   int i;
   float x;
@@ -184,189 +181,198 @@ void getGaussianKernel(float sigma, int ksize, global float* coefficients) {
 
 // #if defined(GAUSSIANBLUR_U81C) || defined(GAUSSIANBLUR_F321C) || \
 //     defined(ALL_KERNELS)
-#define GAUSSIANBLUR_KERNEL_C1_TYPE(base_type_src, Tsrc, base_type_dst, Tdst, \
-                                   cols_load, rows_load, interpolation)      \
-  __kernel void                                                              \
-      gaussianblur##base_type_src##base_type_dst##interpolation##C1Kernel(    \
-          global const Tsrc* src, int rows, int cols,                        \
-          global const float* filter_kernel, int radius, int src_stride,     \
-          global Tdst* dst, int dst_stride) { \
-    int element_x = get_global_id(0);                                        \
-    int element_y = get_global_id(1);                                        \
-    int group_x = get_group_id(0);                                           \
-    int group_y = get_group_id(1);                                           \
-    int index_x = element_x * cols_load, index_y = element_y * rows_load;    \
-    if (index_x >= cols || index_y >= rows) {                                \
-      return;                                                                \
-    }                                                                        \
-                                                                             \
-    src = (global const Tsrc*)((uchar*)src + index_y * src_stride);          \
-    int remain_cols = cols - index_x, remain_rows = rows - index_y;          \
-    int bottom = index_x - radius;                                           \
-    int top = index_x + radius;                                              \
-    int filter_kernel_index;                                                 \
-    int data_index;                                                          \
-                                                                             \
-    float##cols_load input_value[rows_load];                                 \
-    bool isnt_border_block = true;                                           \
-    data_index = radius / (get_local_size(0) * cols_load);                   \
-    if (group_x <= data_index)                                               \
-      isnt_border_block = false;                                             \
-    data_index = (cols - radius) / (get_local_size(0) * cols_load);          \
-    if (group_x >= data_index)                                               \
-      isnt_border_block = false;                                             \
-    int data_index0;                                                         \
-                                                                             \
-    global const Tsrc* src_temp;                                             \
-    for (int i = 0; i < min(remain_rows, rows_load); i++) {                  \
-      ((float##cols_load*)input_value+i)[0] = (float##cols_load)(0);                                \
-      src_temp = src;                                                        \
-      filter_kernel_index = 0;                                               \
-      if (isnt_border_block) {                                               \
-        src_temp += index_x;                                                  \
-        for (int j = radius; j > 0; j--) {                                \
-          ((float##cols_load*)input_value+i)[0] +=                                                  \
-              (convert_float##cols_load(vload##cols_load(0, src_temp - j)) + \
-               convert_float##cols_load(vload##cols_load(0, src_temp + j))) *      \
-              filter_kernel[filter_kernel_index];                            \
-          filter_kernel_index++;                                             \
-        }                                                                    \
+#define GAUSSIANBLUR_KERNEL_C1_TYPE(base_type_src, Tsrc, base_type_dst, Tdst,                             \
+                                   cols_load, rows_load, interpolation)                                   \
+  __kernel void                                                                                           \
+      gaussianblur##base_type_src##base_type_dst##interpolation##C1Kernel(                                \
+          global const Tsrc* src, int src_offset, int rows, int cols,                                     \
+          global const float* filter_kernel, int kernel_offset, int radius, int src_stride,               \
+          global Tdst* dst, int dst_stride, int dst_offset) {                                             \
+    int element_x = get_global_id(0);                                                                     \
+    int element_y = get_global_id(1);                                                                     \
+    int group_x = get_group_id(0);                                                                        \
+    int group_y = get_group_id(1);                                                                        \
+    int index_x = element_x * cols_load, index_y = element_y * rows_load;                                 \
+    if (index_x >= cols || index_y >= rows) {                                                             \
+      return;                                                                                             \
+    }                                                                                                     \
+    src = (global const Tsrc*)((uchar*)src + src_offset);                                                 \
+    dst = (global Tdst*)((uchar*)dst + dst_offset);                                                       \
+    filter_kernel = (global const float*)((global uchar*)filter_kernel + kernel_offset);                  \
+                                                                                                          \
+    src = (global const Tsrc*)((global uchar*)src + index_y * src_stride);                                \
+    int remain_cols = cols - index_x, remain_rows = rows - index_y;                                       \
+    int bottom = index_x - radius;                                                                        \
+    int top = index_x + radius;                                                                           \
+    int filter_kernel_index;                                                                              \
+    int data_index;                                                                                       \
+                                                                                                          \
+    float##cols_load input_value[rows_load];                                                              \
+    bool isnt_border_block = true;                                                                        \
+    data_index = radius / (get_local_size(0)) / cols_load;                                                \
+    if (group_x <= data_index)                                                                            \
+      isnt_border_block = false;                                                                          \
+    data_index = (cols - radius) / (get_local_size(0)) / cols_load;                                       \
+    if (group_x >= data_index)                                                                            \
+      isnt_border_block = false;                                                                          \
+    int data_index0;                                                                                      \
+                                                                                                          \
+    global const Tsrc* src_temp;                                                                          \
+    for (int i = 0; i < min(remain_rows, rows_load); i++) {                                               \
+      ((float##cols_load*)input_value+i)[0] = (float##cols_load)(0);                                      \
+      src_temp = src;                                                                                     \
+      filter_kernel_index = 0;                                                                            \
+      if (isnt_border_block) {                                                                            \
+        src_temp += index_x;                                                                              \
+        for (int j = radius; j > 0; j--) {                                                                \
+          ((float##cols_load*)input_value+i)[0] +=                                                        \
+              (convert_float##cols_load(vload##cols_load(0, src_temp - j)) +                              \
+               convert_float##cols_load(vload##cols_load(0, src_temp + j))) *                             \
+              filter_kernel[filter_kernel_index];                                                         \
+          filter_kernel_index++;                                                                          \
+        }                                                                                                 \
         ((float##cols_load*)input_value+i)[0] += convert_float##cols_load(vload##cols_load(0, src_temp)) *\
-                            filter_kernel[filter_kernel_index];              \
-      }                                                                      \
-      else {                                                                 \
-        float##cols_load value;                                              \
-        int j;\
-        float##cols_load value1;                                              \
-        for (int j_radius = radius; j_radius > 0; j_radius--) {                                \
-          j = index_x - j_radius;                                         \
-          READ_BOARDER##cols_load(interpolation, value);                            \
-          j = index_x + j_radius;                                             \
-          READ_BOARDER##cols_load(interpolation, value1);                            \
-          ((float##cols_load*)input_value+i)[0] += (value + value1) * filter_kernel[filter_kernel_index];      \
-          filter_kernel_index++;                                             \
-        }                                                                    \
-        j = index_x;                                                      \
-        READ_BOARDER##cols_load(interpolation, value);                            \
-        ((float##cols_load*)input_value+i)[0] += (value) * filter_kernel[filter_kernel_index];      \
-      }                                                                      \
-      src = (global const Tsrc*)((uchar*)src + src_stride);                  \
-    }                                                                        \
-                                                                             \
-    dst = (global Tdst*)((uchar*)dst + dst_stride * index_x);                \
-    GAUSSIANBLUR_C1_RAMAIN_COL##rows_load(Tdst, cols_load, rows_load)         \
+                            filter_kernel[filter_kernel_index];                                           \
+      }                                                                                                   \
+      else {                                                                                              \
+        float##cols_load value;                                                                           \
+        int j;                                                                                            \
+        float##cols_load value1;                                                                          \
+        for (int j_radius = radius; j_radius > 0; j_radius--) {                                           \
+          j = index_x - j_radius;                                                                         \
+          READ_BOARDER##cols_load(interpolation, value);                                                  \
+          j = index_x + j_radius;                                                                         \
+          READ_BOARDER##cols_load(interpolation, value1);                                                 \
+          ((float##cols_load*)input_value+i)[0] += (value + value1) * filter_kernel[filter_kernel_index]; \
+          filter_kernel_index++;                                                                          \
+        }                                                                                                 \
+        j = index_x;                                                                                      \
+        READ_BOARDER##cols_load(interpolation, value);                                                    \
+        ((float##cols_load*)input_value+i)[0] += (value) * filter_kernel[filter_kernel_index];            \
+      }                                                                                                   \
+      src = (global const Tsrc*)((global uchar*)src + src_stride);                                        \
+    }                                                                                                     \
+                                                                                                          \
+    dst = (global Tdst*)((global uchar*)dst + dst_stride * index_x);                                      \
+    GAUSSIANBLUR_C1_RAMAIN_COL##rows_load(Tdst, cols_load, rows_load)                                     \
   }
 // #endif
 
-#define GAUSSIANBLUR_SAVE_CHANNEL1(T, rows_load, channels)                  \
-  if (remain_rows >= rows_load) {                                          \
-    for (int i = 0; i < rows_load; i++) {                                  \
-      vstore##channels(convert_##T##channels(input_value[i]), index_y + i, \
-                       dst);                                               \
-    }                                                                      \
+#define GAUSSIANBLUR_SAVE_CHANNEL1(T, rows_load, channels)                                                   \
+  if (remain_rows >= rows_load) {                                                                            \
+    for (int i = 0; i < rows_load; i++) {                                                                    \
+      vstore##channels(convert_##T##channels(input_value[i]), index_y + i,                                   \
+                       dst);                                                                                 \
+    }                                                                                                        \
   }
 
-#define GAUSSIANBLUR_SAVE_CHANNEL2(T, rows_load, channels)                  \
-  GAUSSIANBLUR_SAVE_CHANNEL1(T, rows_load, channels)                        \
-  else if (remain_rows == 1) {                                             \
-    vstore##channels(convert_##T##channels(input_value[0]), index_y, dst); \
+#define GAUSSIANBLUR_SAVE_CHANNEL2(T, rows_load, channels)                                                   \
+  GAUSSIANBLUR_SAVE_CHANNEL1(T, rows_load, channels)                                                         \
+  else if (remain_rows == 1) {                                                                               \
+    vstore##channels(convert_##T##channels(input_value[0]), index_y, dst);                                   \
   }
 
-#define GAUSSIANBLUR_SAVE_CHANNEL3(T, rows_load, channels)                      \
-  GAUSSIANBLUR_SAVE_CHANNEL2(T, rows_load, channels)                            \
-  else if (remain_rows == 2) {                                                 \
-    vstore##channels(convert_##T##channels(input_value[0]), index_y, dst);     \
-    vstore##channels(convert_##T##channels(input_value[1]), index_y + 1, dst); \
+#define GAUSSIANBLUR_SAVE_CHANNEL3(T, rows_load, channels)                                                   \
+  GAUSSIANBLUR_SAVE_CHANNEL2(T, rows_load, channels)                                                         \
+  else if (remain_rows == 2) {                                                                               \
+    vstore##channels(convert_##T##channels(input_value[0]), index_y, dst);                                   \
+    vstore##channels(convert_##T##channels(input_value[1]), index_y + 1, dst);                               \
   }
 
-#define GAUSSIANBLUR_SAVE_CHANNEL4(T, rows_load, channels)                      \
-  GAUSSIANBLUR_SAVE_CHANNEL3(T, rows_load, channels)                            \
-  else if (remain_rows == 3) {                                                 \
-    vstore##channels(convert_##T##channels(input_value[0]), index_y, dst);     \
-    vstore##channels(convert_##T##channels(input_value[1]), index_y + 1, dst); \
-    vstore##channels(convert_##T##channels(input_value[2]), index_y + 2, dst); \
+#define GAUSSIANBLUR_SAVE_CHANNEL4(T, rows_load, channels)                                                   \
+  GAUSSIANBLUR_SAVE_CHANNEL3(T, rows_load, channels)                                                         \
+  else if (remain_rows == 3) {                                                                               \
+    vstore##channels(convert_##T##channels(input_value[0]), index_y, dst);                                   \
+    vstore##channels(convert_##T##channels(input_value[1]), index_y + 1, dst);                               \
+    vstore##channels(convert_##T##channels(input_value[2]), index_y + 2, dst);                               \
   }
 
-// #if defined(GAUSSIANBLUR_U8C3) || defined(GAUSSIANBLUR_F32C3) || \
-//     defined(GAUSSIANBLUR_U8C4) || defined(GAUSSIANBLUR_F32C4) || \
+// #if defined(GAUSSIANBLUR_U8C3) || defined(GAUSSIANBLUR_F32C3) ||                                          \
+//     defined(GAUSSIANBLUR_U8C4) || defined(GAUSSIANBLUR_F32C4) ||                                          \
 //     defined(ALL_KERNELS)
-#define GAUSSIANBLUR_KERNEL_CN_TYPE(base_type_src, Tsrc, base_type_dst, Tdst,         \
-                                   channels, rows_load, interpolation)               \
-  __kernel void                                                                      \
-      gaussianblur##base_type_src##base_type_dst##interpolation##C##channels##Kernel( \
-          global const Tsrc* src, int rows, int cols,                                \
-          global const float* filter_kernel, int radius, int src_stride,             \
-          global Tdst* dst, int dst_stride) {         \
-    int element_x = get_global_id(0);                                                \
-    int element_y = get_global_id(1);                                                \
-    int group_x = get_group_id(0);                                                   \
-    int group_y = get_group_id(1);                                                   \
-    int index_x = element_x, index_y = element_y * rows_load;                        \
-    if (index_x >= cols || index_y >= rows) {                                        \
-      return;                                                                        \
-    }                                                                                \
-                                                                                     \
-    src = (global const Tsrc*)((uchar*)src + index_y * src_stride);                  \
-    int remain_rows = rows - index_y;                                                \
-    int bottom = index_x - radius;                                                   \
-    int top = index_x + radius;                                                      \
-    int filter_kernel_index;                                                         \
-    int data_index;                                                                  \
-                                                                                     \
-    float##channels input_value[rows_load];                                          \
-                                                                                     \
-    bool isnt_border_block = true;                                                   \
-    data_index = radius / (get_local_size(0));                                       \
-    if (group_x <= data_index)                                                       \
-      isnt_border_block = false;                                                     \
-    data_index = (cols - radius) / (get_local_size(0));                              \
-    if (group_x >= data_index)                                                       \
-      isnt_border_block = false;                                                     \
-    int data_index0;\
-                                                                                     \
-    for (int i = 0; i < min(remain_rows, rows_load); i++) {                          \
-      filter_kernel_index = 0;                                                       \
-      ((float##channels*)input_value+i)[0] = (float##channels)(0);                                         \
-      if (isnt_border_block) {                                                       \
-        for (int j = radius; j > 0; j--) {                                        \
+#define GAUSSIANBLUR_KERNEL_CN_TYPE(base_type_src, Tsrc, base_type_dst, Tdst,                                \
+                                   channels, rows_load, interpolation)                                       \
+  __kernel void                                                                                              \
+      gaussianblur##base_type_src##base_type_dst##interpolation##C##channels##Kernel(                        \
+          global const Tsrc* src, int src_offset, int rows, int cols,                                        \
+          global const float* filter_kernel, int kernel_offset, int radius, int src_stride,                  \
+          global Tdst* dst, int dst_stride, int dst_offset) {                                                \
+    int element_x = get_global_id(0);                                                                        \
+    int element_y = get_global_id(1);                                                                        \
+    int group_x = get_group_id(0);                                                                           \
+    int group_y = get_group_id(1);                                                                           \
+    int index_x = element_x, index_y = element_y * rows_load;                                                \
+    if (index_x >= cols || index_y >= rows) {                                                                \
+      return;                                                                                                \
+    }                                                                                                        \
+                                                                                                             \
+    src = (global const Tsrc*)((uchar*)src + src_offset);                                                    \
+    dst = (global Tdst*)((uchar*)dst + dst_offset);                                                          \
+    src = (global const Tsrc*)((global uchar*)src + index_y * src_stride);                                   \
+    filter_kernel = (global const float*)((global uchar*)filter_kernel + kernel_offset);                     \
+    int remain_rows = rows - index_y;                                                                        \
+    int bottom = index_x - radius;                                                                           \
+    int top = index_x + radius;                                                                              \
+    int filter_kernel_index;                                                                                 \
+    int data_index;                                                                                          \
+                                                                                                             \
+                                                                                                             \
+    float##channels input_value[rows_load];                                                                  \
+                                                                                                             \
+    bool isnt_border_block = true;                                                                           \
+    data_index = radius / (get_local_size(0));                                                               \
+    if (group_x <= data_index)                                                                               \
+      isnt_border_block = false;                                                                             \
+    data_index = (cols - radius) / (get_local_size(0));                                                      \
+    if (group_x >= data_index)                                                                               \
+      isnt_border_block = false;                                                                             \
+    int data_index0;                                                                                         \
+                                                                                                             \
+    for (int i = 0; i < min(remain_rows, rows_load); i++) {                                                  \
+      filter_kernel_index = 0;                                                                               \
+      ((float##channels*)input_value+i)[0] = (float##channels)(0);                                           \
+      if (isnt_border_block) {                                                                               \
+        for (int j = radius; j > 0; j--) {                                                                   \
           ((float##channels*)input_value+i)[0] += (convert_float##channels(vload##channels(index_x - j, src))\
-                                + convert_float##channels(vload##channels(index_x + j, src))) *       \
-                            filter_kernel[filter_kernel_index];                      \
-          filter_kernel_index++;                                                     \
-        }                                                                            \
-        ((float##channels*)input_value+i)[0] += convert_float##channels(vload##channels(index_x, src)) *\
-                            filter_kernel[filter_kernel_index];                      \
-      }                                                                              \
-      else {                                                                         \
-        for (int j = radius; j > 0; j--) {                                        \
-          data_index = interpolation(cols, radius, index_x - j);                               \
-          data_index0 = interpolation(cols, radius, index_x + j);                               \
-          ((float##channels*)input_value+i)[0] +=                                                          \
-              (convert_float##channels(vload##channels(data_index, src)) + \
-              convert_float##channels(vload##channels(data_index0, src))) *            \
-              filter_kernel[filter_kernel_index];                                    \
-          filter_kernel_index++;                                                     \
-        }                                                                            \
-        data_index = interpolation(cols, radius, index_x);                               \
-        ((float##channels*)input_value+i)[0] += convert_float##channels(vload##channels(data_index, src)) *\
-                            filter_kernel[filter_kernel_index];                      \
-      }                                                                              \
-      src = (global const Tsrc*)((uchar*)src + src_stride);                          \
-    }                                                                                \
-                                                                                     \
-    dst = (global Tdst*)((uchar*)dst + dst_stride * index_x);                        \
-    GAUSSIANBLUR_SAVE_CHANNEL##rows_load(Tdst, rows_load, channels)                   \
+                                + convert_float##channels(vload##channels(index_x + j, src))) *              \
+                            filter_kernel[filter_kernel_index];                                              \
+          filter_kernel_index++;                                                                             \
+        }                                                                                                    \
+        ((float##channels*)input_value+i)[0] += convert_float##channels(vload##channels(index_x, src)) *     \
+                            filter_kernel[filter_kernel_index];                                              \
+      }                                                                                                      \
+      else {                                                                                                 \
+        for (int j = radius; j > 0; j--) {                                                                   \
+          data_index = interpolation(cols, radius, index_x - j);                                             \
+          data_index0 = interpolation(cols, radius, index_x + j);                                            \
+          ((float##channels*)input_value+i)[0] +=                                                            \
+              (convert_float##channels(vload##channels(data_index, src)) +                                   \
+              convert_float##channels(vload##channels(data_index0, src))) *                                  \
+              filter_kernel[filter_kernel_index];                                                            \
+          filter_kernel_index++;                                                                             \
+        }                                                                                                    \
+        data_index = interpolation(cols, radius, index_x);                                                   \
+        ((float##channels*)input_value+i)[0] += convert_float##channels(vload##channels(data_index, src)) *  \
+                            filter_kernel[filter_kernel_index];                                              \
+      }                                                                                                      \
+      src = (global const Tsrc*)((global uchar*)src + src_stride);                                           \
+    }                                                                                                        \
+                                                                                                             \
+                                                                                                             \
+    dst = (global Tdst*)((global uchar*)dst + dst_stride * index_x);                                         \
+    GAUSSIANBLUR_SAVE_CHANNEL##rows_load(Tdst, rows_load, channels)                                          \
   }
 // #endif
-
 
 
 GAUSSIANBLUR_KERNEL_C1_TYPE(F32, float, U8, uchar, 4, 4, interpolateReplicateBorder)
 GAUSSIANBLUR_KERNEL_C1_TYPE(U8, uchar, F32, float, 2, 2, interpolateReplicateBorder)
 GAUSSIANBLUR_KERNEL_C1_TYPE(F32, float, F32, float, 2, 2, interpolateReplicateBorder)
+
 GAUSSIANBLUR_KERNEL_C1_TYPE(F32, float, U8, uchar, 4, 4, interpolateReflectBorder)
 GAUSSIANBLUR_KERNEL_C1_TYPE(U8, uchar, F32, float, 2, 2, interpolateReflectBorder)
 GAUSSIANBLUR_KERNEL_C1_TYPE(F32, float, F32, float, 2, 2, interpolateReflectBorder)
+
 GAUSSIANBLUR_KERNEL_C1_TYPE(F32, float, U8, uchar, 4, 4, interpolateReflect101Border)
 GAUSSIANBLUR_KERNEL_C1_TYPE(U8, uchar, F32, float, 2, 2, interpolateReflect101Border)
 GAUSSIANBLUR_KERNEL_C1_TYPE(F32, float, F32, float, 2, 2, interpolateReflect101Border)
@@ -374,9 +380,12 @@ GAUSSIANBLUR_KERNEL_C1_TYPE(F32, float, F32, float, 2, 2, interpolateReflect101B
 GAUSSIANBLUR_KERNEL_CN_TYPE(U8, uchar, F32, float, 3, 1, interpolateReplicateBorder)
 GAUSSIANBLUR_KERNEL_CN_TYPE(F32, float, U8, uchar, 3, 4, interpolateReplicateBorder)
 GAUSSIANBLUR_KERNEL_CN_TYPE(F32, float, F32, float, 3, 1, interpolateReplicateBorder)
+
+
 GAUSSIANBLUR_KERNEL_CN_TYPE(U8, uchar, F32, float, 3, 1, interpolateReflectBorder)
 GAUSSIANBLUR_KERNEL_CN_TYPE(F32, float, U8, uchar, 3, 4, interpolateReflectBorder)
 GAUSSIANBLUR_KERNEL_CN_TYPE(F32, float, F32, float, 3, 1, interpolateReflectBorder)
+
 GAUSSIANBLUR_KERNEL_CN_TYPE(U8, uchar, F32, float, 3, 1, interpolateReflect101Border)
 GAUSSIANBLUR_KERNEL_CN_TYPE(F32, float, U8, uchar, 3, 4, interpolateReflect101Border)
 GAUSSIANBLUR_KERNEL_CN_TYPE(F32, float, F32, float, 3, 1, interpolateReflect101Border)
@@ -384,22 +393,11 @@ GAUSSIANBLUR_KERNEL_CN_TYPE(F32, float, F32, float, 3, 1, interpolateReflect101B
 GAUSSIANBLUR_KERNEL_CN_TYPE(U8, uchar, F32, float, 4, 1, interpolateReplicateBorder)
 GAUSSIANBLUR_KERNEL_CN_TYPE(F32, float, U8, uchar, 4, 4, interpolateReplicateBorder)
 GAUSSIANBLUR_KERNEL_CN_TYPE(F32, float, F32, float, 4, 1, interpolateReplicateBorder)
+
 GAUSSIANBLUR_KERNEL_CN_TYPE(U8, uchar, F32, float, 4, 1, interpolateReflectBorder)
 GAUSSIANBLUR_KERNEL_CN_TYPE(F32, float, U8, uchar, 4, 4, interpolateReflectBorder)
 GAUSSIANBLUR_KERNEL_CN_TYPE(F32, float, F32, float, 4, 1, interpolateReflectBorder)
+
 GAUSSIANBLUR_KERNEL_CN_TYPE(U8, uchar, F32, float, 4, 1, interpolateReflect101Border)
 GAUSSIANBLUR_KERNEL_CN_TYPE(F32, float, U8, uchar, 4, 4, interpolateReflect101Border)
 GAUSSIANBLUR_KERNEL_CN_TYPE(F32, float, F32, float, 4, 1, interpolateReflect101Border)
-
-
-// #if defined(GAUSSIANBLUR_F32C3) || defined(ALL_KERNELS)
-// GAUSSIANBLUR_KERNEL_CN_TYPE(F32, float, 3, 1)
-// #endif
-
-// #if defined(GAUSSIANBLUR_U8C4) || defined(ALL_KERNELS)
-// GAUSSIANBLUR_KERNEL_CN_TYPE(U8, uchar, 4, 4)
-// #endif
-
-// #if defined(GAUSSIANBLUR_F32C4) || defined(ALL_KERNELS)
-// GAUSSIANBLUR_KERNEL_CN_TYPE(F32, float, 4, 1)
-// #endif
