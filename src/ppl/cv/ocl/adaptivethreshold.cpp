@@ -15,6 +15,7 @@
  */
 
 #include "ppl/cv/ocl/adaptivethreshold.h"
+#include "utility/use_memory_pool.h"
 
 #include "ppl/common/ocl/pplopencl.h"
 #include "utility/utility.hpp"
@@ -84,7 +85,12 @@ void getGaussianKernel(float sigma, int ksize, float* coefficients);
                  2, global_size, local_size, src, src_stride, buffer, cols,    \
                  rows, ksize >> 1, rows * (int)sizeof(float), dst, dst_stride, \
                  threshold_type, weight, int_delta, setted_value);              \
-    clReleaseMemObject(buffer);                                                \
+    if (memoryPoolUsed()) {                                                     \
+      pplOclFree(buffer_block);                                                 \
+    }                                                                           \
+    else {                                                                      \
+      clReleaseMemObject(buffer);                                               \
+    }                                                                           \
   }
 
 #define ADAPTIVEFILTER_MEAN_BOXFILTER_C1_TYPE(base_type, T)                   \
@@ -109,14 +115,22 @@ void getGaussianKernel(float sigma, int ksize, float* coefficients);
     FrameChain* frame_chain = getSharedFrameChain();                          \
     frame_chain->setProjectName("cv");                                        \
     SET_PROGRAM_SOURCE(frame_chain, adaptivethreshold);                     \
-    cl_context context = frame_chain->getContext();                           \
-                                                                              \
-    cl_int error_code;                                                        \
-    cl_mem buffer =                                                           \
-        clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,    \
-                       cols * (int)sizeof(float) * rows * (int)sizeof(float), \
-                       NULL, &error_code);                                    \
-    CHECK_ERROR(error_code, clCreateBuffer);                                  \
+    cl_mem buffer;                                                                         \
+    GpuMemoryBlock buffer_block;                                                           \
+    buffer_block.offset = 0;\
+    if (memoryPoolUsed()) {                                                                \
+      pplOclMalloc(buffer_block, rows * (int)sizeof(float) *                               \
+                   cols);                                          \
+      buffer = buffer_block.data;                                                          \
+    }                                                                                      \
+    else {                                                                                 \
+      cl_int error_code = 0;                                                               \
+      buffer = clCreateBuffer(                                                             \
+          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,            \
+          rows * (int)sizeof(float) * cols,                                                \
+          NULL, &error_code);                                                              \
+      CHECK_ERROR(error_code, clCreateBuffer);                                             \
+    }                                                                                      \
 \
     int global_cols, global_rows;                                             \
     size_t global_size[2];                                                    \
@@ -151,13 +165,34 @@ ADAPTIVEFILTER_MEAN_BOXFILTER_C1_TYPE(U8, uchar)
       int_delta = std::floor(delta);                                           \
     }                                                                          \
                                                                                \
-    float* kernel_cpu = new float[ksize];                                      \
-    getGaussianKernel(0, ksize, kernel_cpu);                               \
-    error_code = clEnqueueWriteBuffer(queue, kernel, CL_FALSE, 0,              \
-                                      ksize * (int)sizeof(float), kernel_cpu,  \
-                                      0, NULL, NULL);                          \
-    CHECK_ERROR(error_code, clEnqueueWriteBuffer);                             \
-    delete[] kernel_cpu;                                                       \
+    cl_mem buffer, kernel;                                                                         \
+    GpuMemoryBlock buffer_block, kernel_block;                                                           \
+    buffer_block.offset = 0;\
+    kernel_block.offset = 0;\
+    if (memoryPoolUsed()) {                                                                \
+      pplOclMalloc(buffer_block, rows * (int)sizeof(float) *                               \
+                   cols);                                          \
+      buffer = buffer_block.data;                                                          \
+      pplOclMalloc(kernel_block, ksize * (int)sizeof(float));                                          \
+      kernel = kernel_block.data;                                                          \
+    }                                                                                      \
+    else {                                                                                 \
+      cl_int error_code = 0;                                                               \
+      buffer = clCreateBuffer(                                                             \
+          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,            \
+          rows * (int)sizeof(float) * cols,                                                \
+          NULL, &error_code);                                                              \
+      CHECK_ERROR(error_code, clCreateBuffer);                                             \
+      kernel = clCreateBuffer(                                                        \
+          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,       \
+          ksize * (int)sizeof(float),           \
+          NULL, &error_code);                                                         \
+      CHECK_ERROR(error_code, clCreateBuffer);                                        \
+    }                                                                                      \
+    global_size[0] = (size_t)1;                                      \
+    runOclKernel(frame_chain,                                                              \
+                 "getGaussianKernel", 1,                                                   \
+                 global_size, global_size, 0, ksize, kernel, (int)kernel_block.offset);                          \
                                                                                \
     ksize = ksize >> 1;                                                        \
     size_t local_size[] = {kBlockDimX0, kBlockDimY0};                          \
@@ -179,12 +214,18 @@ ADAPTIVEFILTER_MEAN_BOXFILTER_C1_TYPE(U8, uchar)
     global_size[1] = (size_t)global_cols;                                      \
     runOclKernel(frame_chain,                                                  \
                  "adaptivethreshold_gaussianblur"                              \
-                 "F32" #base_type #interpolate "THRESHOLD_TRANSPOSEC1Kernel",                     \
+                 "F32" #base_type #interpolate "THRESHOLD_TRANSPOSEC1Kernel",  \
                  2, global_size, local_size, src, src_stride, buffer, cols,    \
                  rows, kernel, ksize, rows*(int)sizeof(float), dst,            \
                  dst_stride, threshold_type, int_delta, setted_value);          \
-    clReleaseMemObject(buffer);                                                \
-    clReleaseMemObject(kernel);                                                \
+    if (memoryPoolUsed()) {                                                     \
+      pplOclFree(buffer_block);                                                 \
+      pplOclFree(kernel_block);                                                            \
+    }                                                                           \
+    else {                                                                      \
+      clReleaseMemObject(buffer);                                               \
+      clReleaseMemObject(kernel);                                               \
+    }                                                                           \
   }
 
 #define ADAPTIVETHRESHOLD_GAUSSIANBLUR_C1_TYPE(base_type, T)                  \

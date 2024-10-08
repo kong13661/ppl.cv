@@ -15,6 +15,7 @@
  */
 
 #include "ppl/cv/ocl/adaptivethreshold.h"
+#include "ppl/cv/ocl/use_memory_pool.h"
 
 #include <tuple>
 #include <sstream>
@@ -160,6 +161,10 @@ bool PplCvOclAdaptiveThresholdToTest<T, channels>::apply() {
   error_code = clEnqueueUnmapMemObject(queue, gpu_input, input, 0, NULL, NULL);
   CHECK_ERROR(error_code, clEnqueueUnmapMemObject);
 
+  size_t size_width = size.width * channels * sizeof(float);
+  size_t ceiled_volume = ppl::cv::ocl::ceil2DVolume(size_width, size.height);
+  ppl::cv::ocl::activateGpuMemoryPool(ceiled_volume + ppl::cv::ocl::ceil1DVolume(ksize * sizeof(float)));
+
   cv::AdaptiveThresholdTypes cv_adaptive_method = cv::ADAPTIVE_THRESH_MEAN_C;
   if (adaptive_method == ADAPTIVE_THRESH_MEAN_C) {
     cv_adaptive_method = cv::ADAPTIVE_THRESH_MEAN_C;
@@ -213,6 +218,7 @@ bool PplCvOclAdaptiveThresholdToTest<T, channels>::apply() {
                                        NULL);
   CHECK_ERROR(error_code, clEnqueueUnmapMemObject);
 
+  ppl::cv::ocl::shutDownGpuMemoryPool();
   clReleaseMemObject(gpu_src);
   clReleaseMemObject(gpu_dst);
   clReleaseMemObject(gpu_input);
@@ -233,7 +239,7 @@ INSTANTIATE_TEST_CASE_P(IsEqual,                                               \
   PplCvOclAdaptiveThresholdToTest ## T ## channels,                       \
   ::testing::Combine(                                                          \
     ::testing::Values(3),                                       \
-    ::testing::Values(ADAPTIVE_THRESH_MEAN_C),                    \
+    ::testing::Values(ADAPTIVE_THRESH_GAUSSIAN_C),                    \
     ::testing::Values(THRESH_BINARY),     \
     ::testing::Values(70),                                      \
     ::testing::Values(0),                                      \

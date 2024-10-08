@@ -15,6 +15,7 @@
  */
 
 #include "ppl/cv/ocl/adaptivethreshold.h"
+#include "ppl/cv/ocl/use_memory_pool.h"
 
 #include <time.h>
 #include <sys/time.h>
@@ -62,6 +63,10 @@ void BM_AdaptiveThreshold_ppl_ocl(benchmark::State &state) {
                                     src.data, 0, NULL, NULL);
   CHECK_ERROR(error_code, clEnqueueWriteBuffer);
 
+  size_t size_width = size.width * channels * sizeof(float);
+  size_t ceiled_volume = ppl::cv::ocl::ceil2DVolume(size_width, size.height);
+  ppl::cv::ocl::activateGpuMemoryPool(ceiled_volume + ppl::cv::ocl::ceil1DVolume(ksize * sizeof(float)));
+
   int iterations = 100;
   struct timeval start, end;
 
@@ -88,6 +93,7 @@ void BM_AdaptiveThreshold_ppl_ocl(benchmark::State &state) {
   }
   state.SetItemsProcessed(state.iterations() * 1);
 
+  ppl::cv::ocl::shutDownGpuMemoryPool();
   clReleaseMemObject(gpu_src);
   clReleaseMemObject(gpu_dst);
 }

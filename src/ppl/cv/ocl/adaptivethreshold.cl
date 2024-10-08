@@ -142,35 +142,35 @@
 
 #define THRESHOLD_BINARY_VSTORE_REMAIN_ROWS1(input, rows_load)                              \
   int offset = element_y * rows_load;                                                \
-  dst[offset] = (src_input[offset]);
+  dst[offset] = convert_int(src_input[offset]) > convert_int(convert_uchar1(input) - delta) ? setted_value : 0;
 
 #define THRESHOLD_BINARY_VSTORE_REMAIN_ROWS1_VEC(input, rows_load)                          \
   int offset = element_y * rows_load;                                                \
-  dst[offset] = (src_input[offset]);
+  dst[offset] = convert_int(src_input[offset]) > convert_int(convert_uchar1(input.INDEX_CONVERT##1) - delta) ? setted_value : 0;
 
 #define THRESHOLD_BINARY_VSTORE_REMAIN_ROWS2(input, rows_load)                              \
   THRESHOLD_BINARY_VSTORE_REMAIN_ROWS1_VEC(input, rows_load)                                \
-  dst[offset + 1] = (src_input[offset + 1]);
+  dst[offset + 1] = convert_int(src_input[offset + 1]) > convert_int(convert_uchar1(input.INDEX_CONVERT##2) - delta) ? setted_value : 0;
 
 #define THRESHOLD_BINARY_VSTORE_REMAIN_ROWS3(input, rows_load)                              \
   THRESHOLD_BINARY_VSTORE_REMAIN_ROWS2(input, rows_load)                                    \
-  dst[offset + 2] = (src_input[offset + 2]);
+  dst[offset + 2] = convert_int(src_input[offset + 2]) > convert_int(convert_uchar1(input.INDEX_CONVERT##3) - delta) ? setted_value : 0;
 
 #define THRESHOLD_BINARY_INV_VSTORE_REMAIN_ROWS1(input, rows_load)                              \
   int offset = element_y * rows_load;                                                \
-  dst[offset] = (src_input[offset]);
+  dst[offset] = convert_int(src_input[offset]) > convert_int(convert_uchar1(input) - delta) ? 0 : setted_value;
 
 #define THRESHOLD_BINARY_INV_VSTORE_REMAIN_ROWS1_VEC(input, rows_load)                          \
   int offset = element_y * rows_load;                                                \
-  dst[offset] = (src_input[offset]);
+  dst[offset] = convert_int(src_input[offset]) > convert_int(convert_uchar1(input.INDEX_CONVERT##1) - delta) ? 0 : setted_value;
 
 #define THRESHOLD_BINARY_INV_VSTORE_REMAIN_ROWS2(input, rows_load)                              \
   THRESHOLD_BINARY_INV_VSTORE_REMAIN_ROWS1_VEC(input, rows_load)                                \
-  dst[offset + 1] = (src_input[offset + 1]);
+  dst[offset + 1] = convert_int(src_input[offset + 1]) > convert_int(convert_uchar1(input.INDEX_CONVERT##2) - delta) ? 0 : setted_value;
 
 #define THRESHOLD_BINARY_INV_VSTORE_REMAIN_ROWS3(input, rows_load)                              \
   THRESHOLD_BINARY_INV_VSTORE_REMAIN_ROWS2(input, rows_load)                                    \
-  dst[offset + 2] = (src_input[offset + 2]);
+  dst[offset + 2] = convert_int(src_input[offset + 2]) > convert_int(convert_uchar1(input.INDEX_CONVERT##3) - delta) ? 0 : setted_value;
 
 #define THRESHOLD_TRANSPOSE_AND_SAVE_VEC(T, src_array, output, rows_load, i, j)\
   {                                                                          \
@@ -178,6 +178,9 @@
     TRANSPOSE_ELEMENT##i(T, src_array, output, j);                           \
     if (threshold_type == THRESH_BINARY) {                                   \
       for (int k = 0; k < i; k++) {                                          \
+        output[k] = convert_uchar##j(convert_int##j(vload##j(element_y, src_input)) > (convert_int##j(output[k]) - delta)     \
+                        ? (int##j)(setted_value)                                       \
+                        : (int##j)(0));                                                 \
         vstore##j(output[k], element_y, dst);                                \
         src_input = (global T*)((uchar*)src_input + src_input_stride);       \
         dst = (global T*)((uchar*)dst + dst_stride);                         \
@@ -185,6 +188,9 @@
     }                                                                        \
     else {                                                                   \
       for (int k = 0; k < i; k++) {                                          \
+        output[k] = convert_uchar##j(convert_int##j(vload##j(element_y, src_input)) > (convert_int##j(output[k]) - delta)     \
+                        ? (int##j)(0)                                                  \
+                        : (int##j)(setted_value));                                      \
         vstore##j(output[k], element_y, dst);                                \
         src_input = (global T*)((uchar*)src_input + src_input_stride);       \
         dst = (global T*)((uchar*)dst + dst_stride);                         \
@@ -290,6 +296,28 @@
   READ_BOARDER3(interpolation)                     \
   data_index = interpolation(cols, radius, j + 3); \
   value.w = convert_float(src_temp[data_index]);
+
+__kernel
+void getGaussianKernel(float sigma, int ksize, global float* coefficients, int offset) {
+  float value = sigma > 0 ? sigma : ((ksize - 1) * 0.5f - 1) * 0.3f + 0.8f;
+  float scale_2x = -0.5f / (value * value);
+  float sum = 0.f;
+  coefficients = (global float*)((global uchar*)coefficients + offset);
+
+  int i;
+  float x;
+  for (i = 0; i < ksize; i++) {
+    x = i - (ksize - 1) * 0.5f;
+    value = exp(scale_2x * x * x);
+    coefficients[i] = value;
+    sum +=value;
+  }
+
+  sum = 1.f / sum;
+  for (i = 0; i < ksize; i++) {
+    coefficients[i] *= sum;
+  }
+}
 
 // #if defined(TRANSPOSE_U81C) || defined(TRANSPOSE_F321C) || \
 //     defined(ALL_KERNELS)
