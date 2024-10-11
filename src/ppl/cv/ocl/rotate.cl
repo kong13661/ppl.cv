@@ -14,566 +14,1289 @@
  * under the License.
  */
 
-#define INDEX_CONVERT1 x
-#define INDEX_CONVERT2 y
-#define INDEX_CONVERT3 z
-#define INDEX_CONVERT4 w
-
-#define vstore1(output_value, offset, dst) dst[offset] = output_value;
-#define uchar1 uchar
-#define float1 float
-
-#if defined(ROTATE90_U8C1) || defined(ROTATE90_F32C1) || defined(ALL_KERNELS)
-#define ROTATE_SAVE_90_OUTPUT_RIGHTVALUE_1(T, col_index) \
-  input_value[0].INDEX_CONVERT##col_index
-
-#define ROTATE_SAVE_90_OUTPUT_RIGHTVALUE_2(T, col_index) \
-  input_value[1].INDEX_CONVERT##col_index,               \
-      input_value[0].INDEX_CONVERT##col_index
-
-#define ROTATE_SAVE_90_OUTPUT_RIGHTVALUE_3(T, col_index) \
-  input_value[2].INDEX_CONVERT##col_index,               \
-      input_value[1].INDEX_CONVERT##col_index,           \
-      input_value[0].INDEX_CONVERT##col_index
-
-#define ROTATE_SAVE_90_OUTPUT_RIGHTVALUE_4(T, col_index) \
-  input_value[3].INDEX_CONVERT##col_index,               \
-      input_value[2].INDEX_CONVERT##col_index,           \
-      input_value[1].INDEX_CONVERT##col_index,           \
-      input_value[0].INDEX_CONVERT##col_index
-
-#define ROTATE_SAVE_90_OUTPUT_1(T, cols_remained, rows_remained) \
-  T##rows_remained output_value;                                 \
-  output_value = (T##rows_remained)(                             \
-      ROTATE_SAVE_90_OUTPUT_RIGHTVALUE_##rows_remained(T, 1));   \
-  vstore##rows_remained(output_value, 0, dst);                   \
-  dst = (global T*)((global uchar*)dst + dst_stride);
-
-#define ROTATE_SAVE_90_OUTPUT_2(T, cols_remained, rows_remained) \
-  ROTATE_SAVE_90_OUTPUT_1(T, cols_remained, rows_remained)       \
-  output_value = (T##rows_remained)(                             \
-      ROTATE_SAVE_90_OUTPUT_RIGHTVALUE_##rows_remained(T, 2));   \
-  vstore##rows_remained(output_value, 0, dst);                   \
-  dst = (global T*)((global uchar*)dst + dst_stride);
-
-#define ROTATE_SAVE_90_OUTPUT_3(T, cols_remained, rows_remained) \
-  ROTATE_SAVE_90_OUTPUT_2(T, cols_remained, rows_remained)       \
-  output_value = (T##rows_remained)(                             \
-      ROTATE_SAVE_90_OUTPUT_RIGHTVALUE_##rows_remained(T, 3));   \
-  vstore##rows_remained(output_value, 0, dst);                   \
-  dst = (global T*)((global uchar*)dst + dst_stride);
-
-#define ROTATE_SAVE_90_OUTPUT_4(T, cols_remained, rows_remained) \
-  ROTATE_SAVE_90_OUTPUT_3(T, cols_remained, rows_remained)       \
-  output_value = (T##rows_remained)(                             \
-      ROTATE_SAVE_90_OUTPUT_RIGHTVALUE_##rows_remained(T, 4));   \
-  vstore##rows_remained(output_value, 0, dst);
-
-#define ROTATE_DST_90(T, rows_load, cols_load)            \
-  dst = (global T*)((global uchar*)dst + dst_stride * index_x) + \
-        max(rows - index_y - rows_load, 0);
-#endif
-
-#if defined(ROTATE90_U8C1) || defined(ROTATE90_F32C1) || defined(ROTATE180_U8C1) ||\
-  defined(ROTATE180_F32C1) || defined(ROTATE270_U8C1) || defined(ROTATE270_F32C1) || defined(ALL_KERNELS)
-#define ROTATE_SAVE_IF_ROW1(T, cols_remained, rows_remained, cols_load,    \
-                            rows_load, degree)                             \
-  if (rows_remained >= rows_load) {                                        \
-    ROTATE_SAVE_##degree##_OUTPUT_##cols_load(T, cols_remained, rows_load) \
-  }
-
-#define ROTATE_SAVE_IF_ROW2(T, cols_remained, rows_remained, cols_load,      \
-                            rows_load, degree)                               \
-  ROTATE_SAVE_IF_ROW1(T, cols_remained, rows_remained, cols_load, rows_load, \
-                      degree)                                                \
-  else if (rows_remained == 1) {                                             \
-    ROTATE_SAVE_##degree##_OUTPUT_##cols_load(T, cols_remained, 1)           \
-  }
-
-#define ROTATE_SAVE_IF_ROW3(T, cols_remained, rows_remained, cols_load,      \
-                            rows_load, degree)                               \
-  ROTATE_SAVE_IF_ROW2(T, cols_remained, rows_remained, cols_load, rows_load, \
-                      degree)                                                \
-  else if (rows_remained == 2) {                                             \
-    ROTATE_SAVE_##degree##_OUTPUT_##cols_load(T, cols_remained, 2)           \
-  }
-
-#define ROTATE_SAVE_IF_ROW4(T, cols_remained, rows_remained, cols_load,      \
-                            rows_load, degree)                               \
-  ROTATE_SAVE_IF_ROW3(T, cols_remained, rows_remained, cols_load, rows_load, \
-                      degree)                                                \
-  else if (rows_remained == 3) {                                             \
-    ROTATE_SAVE_##degree##_OUTPUT_##cols_load(T, cols_remained, 3)           \
-  }
-
-#define ROTATE_SAVE_IF_COL1(T, rows_load, cols_remained, rows_remained,   \
-                            cols_load, dst, degree)                       \
-  if (cols_remained >= cols_load) {                                       \
-    ROTATE_SAVE_IF_ROW##rows_load(T, cols_load, rows_remained, cols_load, \
-                                  rows_load, degree)                      \
-  }
-
-#define ROTATE_SAVE_IF_COL2(T, rows_load, cols_remained, rows_remained,      \
-                            cols_load, dst, degree)                          \
-  ROTATE_SAVE_IF_COL1(T, rows_load, cols_remained, rows_remained, cols_load, \
-                      dst, degree)                                           \
-  else if (cols_remained == 1) {                                             \
-    ROTATE_SAVE_IF_ROW##rows_load(T, 1, rows_remained, 1, rows_load, degree) \
-  }
-
-#define ROTATE_SAVE_IF_COL3(T, rows_load, cols_remained, rows_remained,      \
-                            cols_load, dst, degree)                          \
-  ROTATE_SAVE_IF_COL2(T, rows_load, cols_remained, rows_remained, cols_load, \
-                      dst, degree)                                           \
-  else if (cols_remained == 2) {                                             \
-    ROTATE_SAVE_IF_ROW##rows_load(T, 2, rows_remained, 2, rows_load, degree) \
-  }
-
-#define ROTATE_SAVE_IF_COL4(T, rows_load, cols_remained, rows_remained,      \
-                            cols_load, dst, degree)                          \
-  ROTATE_SAVE_IF_COL3(T, rows_load, cols_remained, rows_remained, cols_load, \
-                      dst, degree)                                           \
-  else if (cols_remained == 3) {                                             \
-    ROTATE_SAVE_IF_ROW##rows_load(T, 3, rows_remained, 3, rows_load, degree) \
-  }
-#endif
-
-// =======================================================================
-
-#if defined(ROTATE180_U8C1) || defined(ROTATE180_F32C1) || defined(ALL_KERNELS)
-#define ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_1(T, row_index) \
-  input_value[row_index].x
-
-#define ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_2(T, row_index) \
-  input_value[row_index].y, input_value[row_index].x
-
-#define ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_3(T, row_index) \
-  input_value[row_index].z, input_value[row_index].y,     \
-  input_value[row_index].x
-
-#define ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_4(T, row_index) \
-  input_value[row_index].w, input_value[row_index].z,     \
-      input_value[row_index].y, input_value[row_index].x
-
-#define ROTATE_SAVE_180_OUTPUT_1_(T, cols_remained, rows_remained) \
-  T##cols_remained output_value;                                   \
-  output_value = (T##cols_remained)(                               \
-      ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_##cols_remained(T, 0));    \
-  vstore##cols_remained(output_value, 0, dst);                     \
-  dst = (global T*)((global uchar*)dst + dst_stride);
-
-#define ROTATE_SAVE_180_OUTPUT_2_(T, cols_remained, rows_remained) \
-  T##cols_remained output_value;                                   \
-  output_value = (T##cols_remained)(                               \
-      ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_##cols_remained(T, 1));    \
-  vstore##cols_remained(output_value, 0, dst);                     \
-  dst = (global T*)((global uchar*)dst + dst_stride);                     \
-                                                                   \
-  output_value = (T##cols_remained)(                               \
-      ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_##cols_remained(T, 0));    \
-  vstore##cols_remained(output_value, 0, dst);                     \
-  dst = (global T*)((global uchar*)dst + dst_stride);
-
-#define ROTATE_SAVE_180_OUTPUT_3_(T, cols_remained, rows_remained) \
-  T##cols_remained output_value;                                   \
-  output_value = (T##cols_remained)(                               \
-      ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_##cols_remained(T, 2));    \
-  vstore##cols_remained(output_value, 0, dst);                     \
-  dst = (global T*)((global uchar*)dst + dst_stride);                     \
-                                                                   \
-  output_value = (T##cols_remained)(                               \
-      ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_##cols_remained(T, 1));    \
-  vstore##cols_remained(output_value, 0, dst);                     \
-  dst = (global T*)((global uchar*)dst + dst_stride);                     \
-                                                                   \
-  output_value = (T##cols_remained)(                               \
-      ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_##cols_remained(T, 0));    \
-  vstore##cols_remained(output_value, 0, dst);                     \
-  dst = (global T*)((global uchar*)dst + dst_stride);
-
-#define ROTATE_SAVE_180_OUTPUT_4_(T, cols_remained, rows_remained) \
-  T##cols_remained output_value;                                   \
-  output_value = (T##cols_remained)(                               \
-      ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_##cols_remained(T, 3));    \
-  vstore##cols_remained(output_value, 0, dst);                     \
-  dst = (global T*)((global uchar*)dst + dst_stride);                     \
-                                                                   \
-  output_value = (T##cols_remained)(                               \
-      ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_##cols_remained(T, 2));    \
-  vstore##cols_remained(output_value, 0, dst);                     \
-  dst = (global T*)((global uchar*)dst + dst_stride);                     \
-                                                                   \
-  output_value = (T##cols_remained)(                               \
-      ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_##cols_remained(T, 1));    \
-  vstore##cols_remained(output_value, 0, dst);                     \
-  dst = (global T*)((global uchar*)dst + dst_stride);                     \
-                                                                   \
-  output_value = (T##cols_remained)(                               \
-      ROTATE_SAVE_180_OUTPUT_RIGHTVALUE_##cols_remained(T, 0));    \
-  vstore##cols_remained(output_value, 0, dst);                     \
-  dst = (global T*)((global uchar*)dst + dst_stride);
-
-#define ROTATE_SAVE_180_OUTPUT_1(T, cols_remained, rows_remained) \
-  ROTATE_SAVE_180_OUTPUT_##rows_remained##_(T, cols_remained, rows_remained)
-
-#define ROTATE_SAVE_180_OUTPUT_2(T, cols_remained, rows_remained) \
-  ROTATE_SAVE_180_OUTPUT_##rows_remained##_(T, cols_remained, rows_remained)
-
-#define ROTATE_SAVE_180_OUTPUT_3(T, cols_remained, rows_remained) \
-  ROTATE_SAVE_180_OUTPUT_##rows_remained##_(T, cols_remained, rows_remained)
-
-#define ROTATE_SAVE_180_OUTPUT_4(T, cols_remained, rows_remained) \
-  ROTATE_SAVE_180_OUTPUT_##rows_remained##_(T, cols_remained, rows_remained)
-
-#define ROTATE_DST_180(T, rows_load, cols_load)                        \
-  dst = (global T*)((global uchar*)dst +                                      \
-                    dst_stride * max(rows - index_y - rows_load, 0)) + \
-        max(cols - index_x - cols_load, 0);
-#endif
-// ===============================================================================
-
-#if defined(ROTATE270_U8C1) || defined(ROTATE270_F32C1) || defined(ALL_KERNELS)
-#define ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_1(T, col_index) \
-  input_value[0].INDEX_CONVERT##col_index
-
-#define ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_2(T, col_index) \
-  input_value[0].INDEX_CONVERT##col_index,                \
-      input_value[1].INDEX_CONVERT##col_index
-
-#define ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_3(T, col_index) \
-  input_value[0].INDEX_CONVERT##col_index,                \
-      input_value[1].INDEX_CONVERT##col_index,            \
-      input_value[2].INDEX_CONVERT##col_index
-
-#define ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_4(T, col_index) \
-  input_value[0].INDEX_CONVERT##col_index,                \
-      input_value[1].INDEX_CONVERT##col_index,            \
-      input_value[2].INDEX_CONVERT##col_index,            \
-      input_value[3].INDEX_CONVERT##col_index
-
-#define ROTATE_SAVE_270_OUTPUT_1(T, cols_remained, rows_remained) \
-  T##rows_remained output_value;                                  \
-  output_value = (T##rows_remained)(                              \
-      ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_##rows_remained(T, 1));   \
-  vstore##rows_remained(output_value, 0, dst);                    \
-  dst = (global T*)((global uchar*)dst + dst_stride);
-
-#define ROTATE_SAVE_270_OUTPUT_2(T, cols_remained, rows_remained) \
-  T##rows_remained output_value;                                  \
-  output_value = (T##rows_remained)(                              \
-      ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_##rows_remained(T, 2));   \
-  vstore##rows_remained(output_value, 0, dst);                    \
-  dst = (global T*)((global uchar*)dst + dst_stride);                    \
-                                                                  \
-  output_value = (T##rows_remained)(                              \
-      ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_##rows_remained(T, 1));   \
-  vstore##rows_remained(output_value, 0, dst);                    \
-  dst = (global T*)((global uchar*)dst + dst_stride);
-
-#define ROTATE_SAVE_270_OUTPUT_3(T, cols_remained, rows_remained) \
-  T##rows_remained output_value;                                  \
-  output_value = (T##rows_remained)(                              \
-      ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_##rows_remained(T, 3));   \
-  vstore##rows_remained(output_value, 0, dst);                    \
-  dst = (global T*)((global uchar*)dst + dst_stride);                    \
-                                                                  \
-  output_value = (T##rows_remained)(                              \
-      ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_##rows_remained(T, 2));   \
-  vstore##rows_remained(output_value, 0, dst);                    \
-  dst = (global T*)((global uchar*)dst + dst_stride);                    \
-                                                                  \
-  output_value = (T##rows_remained)(                              \
-      ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_##rows_remained(T, 1));   \
-  vstore##rows_remained(output_value, 0, dst);                    \
-  dst = (global T*)((global uchar*)dst + dst_stride);
-
-#define ROTATE_SAVE_270_OUTPUT_4(T, cols_remained, rows_remained) \
-  T##rows_remained output_value;                                  \
-  output_value = (T##rows_remained)(                              \
-      ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_##rows_remained(T, 4));   \
-  vstore##rows_remained(output_value, 0, dst);                    \
-  dst = (global T*)((global uchar*)dst + dst_stride);                    \
-                                                                  \
-  output_value = (T##rows_remained)(                              \
-      ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_##rows_remained(T, 3));   \
-  vstore##rows_remained(output_value, 0, dst);                    \
-  dst = (global T*)((global uchar*)dst + dst_stride);                    \
-                                                                  \
-  output_value = (T##rows_remained)(                              \
-      ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_##rows_remained(T, 2));   \
-  vstore##rows_remained(output_value, 0, dst);                    \
-  dst = (global T*)((global uchar*)dst + dst_stride);                    \
-                                                                  \
-  output_value = (T##rows_remained)(                              \
-      ROTATE_SAVE_270_OUTPUT_RIGHTVALUE_##rows_remained(T, 1));   \
-  vstore##rows_remained(output_value, 0, dst);                    \
-  dst = (global T*)((global uchar*)dst + dst_stride);
-
-#define ROTATE_DST_270(T, rows_load, cols_load)                        \
-  dst = (global T*)((global uchar*)dst +                                      \
-                    dst_stride * max(cols - index_x - cols_load, 0)) + \
-        index_y;
-#endif
-// ==============================================================================
-
-#define LOAD_ELEMENT2 \
-  input_value[i].x = src[index_x];
-#define LOAD_ELEMENT3\
-  input_value[i].x = src[index_x];\
-  if (cols_remained > 1) {\
-    input_value[i].y = src[index_x + 1];\
-  }
-#define LOAD_ELEMENT4\
-  input_value[i].x = src[index_x];\
-  if (cols_remained > 1) {\
-    input_value[i].y = src[index_x + 1];\
-  }\
-  if (cols_remained > 2) {\
-    input_value[i].z = src[index_x + 2];\
-  }
-
-#if defined(ROTATE90_U8C1) || defined(ROTATE90_F32C1) || defined(ROTATE180_U8C1) ||\
-  defined(ROTATE180_F32C1) || defined(ROTATE270_U8C1) || defined(ROTATE270_F32C1) || defined(ALL_KERNELS)
-#define ROTATE_KERNEL_C1_TYPE(base_type, T, rows_load, cols_load, degree)     \
-  __kernel void rotateC1##degree##base_type##Kernel(                          \
-      global const T* src, int rows, int cols, int src_stride, global T* dst, \
-      int dst_stride) {                                                       \
-    int element_x = get_global_id(0);                                         \
-    int element_y = get_global_id(1);                                         \
-    int index_x = element_x * cols_load, index_y = element_y * rows_load;     \
-    if (index_x >= cols || index_y >= rows) {                                 \
-      return;                                                                 \
-    }                                                                         \
-                                                                              \
-    src = (global const T*)((global uchar*)src + index_y * src_stride);              \
-    int cols_remained = cols - index_x, rows_remained = rows - index_y;       \
-                                                                              \
-    T##cols_load input_value[rows_load];                                      \
-    for (int i = 0; i < min(rows_remained, rows_load); i++) {                 \
-      input_value[i] = vload##cols_load(element_x, src);                    \
-      src = (global const T*)((global uchar*)src + src_stride);                      \
-    }                                                                         \
-                                                                              \
-    ROTATE_DST_##degree(T, rows_load, cols_load)                              \
-        ROTATE_SAVE_IF_COL##cols_load(T, rows_load, cols_remained,            \
-                                      rows_remained, cols_load, dst, degree)  \
-  }
-#endif
-
-
-// =================================================================
-#if defined(ROTATE90_U8C3) || defined(ROTATE90_F32C3) || \
-  defined(ROTATE90_U8C4) || defined(ROTATE90_F32C4) || defined(ALL_KERNELS)
-#define ROTATE_SAVE_90_OUTPUT_CN_1(T, channels) \
-  vstore##channels(input_value[0], 0, dst);
-
-#define ROTATE_SAVE_90_OUTPUT_CN_2(T, channels) \
-  vstore##channels(input_value[1], 0, dst);     \
-  dst += channels;                              \
-  vstore##channels(input_value[0], 0, dst);
-
-#define ROTATE_SAVE_90_OUTPUT_CN_3(T, channels) \
-  vstore##channels(input_value[2], 0, dst);     \
-  dst += channels;                              \
-  vstore##channels(input_value[1], 0, dst);     \
-  dst += channels;                              \
-  vstore##channels(input_value[0], 0, dst);
-
-#define ROTATE_SAVE_90_OUTPUT_CN_4(T, channels) \
-  vstore##channels(input_value[3], 0, dst);     \
-  dst += channels;                              \
-  vstore##channels(input_value[2], 0, dst);     \
-  dst += channels;                              \
-  vstore##channels(input_value[1], 0, dst);     \
-  dst += channels;                              \
-  vstore##channels(input_value[0], 0, dst);
-
-#define ROTATE_DST_CN_90(T, rows_load, cols_load, channels) \
-  dst = (global T*)((global uchar*)dst + dst_stride * index_x) +   \
-        max(rows - index_y - rows_load, 0) * channels;
-#endif
-// =================================================================
-
-#if defined(ROTATE180_U8C3) || defined(ROTATE180_F32C3) || \
-  defined(ROTATE180_U8C4) || defined(ROTATE180_F32C4) || defined(ALL_KERNELS)
-#define ROTATE_SAVE_180_OUTPUT_CN_1(T, channels) \
-  vstore##channels(input_value[0], 0, dst);
-
-#define ROTATE_SAVE_180_OUTPUT_CN_2(T, channels) \
-  vstore##channels(input_value[1], 0, dst);     \
-  dst += dst_stride;                              \
-  vstore##channels(input_value[0], 0, dst);
-
-#define ROTATE_SAVE_180_OUTPUT_CN_3(T, channels) \
-  vstore##channels(input_value[2], 0, dst);     \
-  dst += dst_stride;                              \
-  vstore##channels(input_value[1], 0, dst);     \
-  dst += dst_stride;                              \
-  vstore##channels(input_value[0], 0, dst);
-
-#define ROTATE_SAVE_180_OUTPUT_CN_4(T, channels) \
-  vstore##channels(input_value[3], 0, dst);     \
-  dst += dst_stride;                              \
-  vstore##channels(input_value[2], 0, dst);     \
-  dst += dst_stride;                              \
-  vstore##channels(input_value[1], 0, dst);     \
-  dst += dst_stride;                              \
-  vstore##channels(input_value[0], 0, dst);
-
-#define ROTATE_DST_CN_180(T, rows_load, cols_load, channels) \
-  dst = (global T*)((global uchar*)dst + dst_stride * max(rows - index_y - rows_load, 0)) +   \
-        max(cols - index_x - cols_load, 0) * channels;
-#endif
-
-// =================================================================
-
-#if defined(ROTATE270_U8C3) || defined(ROTATE270_F32C3) || \
-  defined(ROTATE270_U8C4) || defined(ROTATE270_F32C4) || defined(ALL_KERNELS)
-#define ROTATE_SAVE_270_OUTPUT_CN_1(T, channels) \
-  vstore##channels(input_value[0], 0, dst);
-
-#define ROTATE_SAVE_270_OUTPUT_CN_2(T, channels) \
-  ROTATE_SAVE_270_OUTPUT_CN_1(T, channels)       \
-  dst += channels;                               \
-  vstore##channels(input_value[1], 0, dst);
-
-#define ROTATE_SAVE_270_OUTPUT_CN_3(T, channels) \
-  ROTATE_SAVE_270_OUTPUT_CN_2(T, channels)       \
-  dst += channels;                               \
-  vstore##channels(input_value[2], 0, dst);
-
-#define ROTATE_SAVE_270_OUTPUT_CN_4(T, channels) \
-  ROTATE_SAVE_270_OUTPUT_CN_3(T, channels)       \
-  dst += channels;                               \
-  vstore##channels(input_value[3], 0, dst);
-
-#define ROTATE_DST_CN_270(T, rows_load, cols_load, channels)           \
-  dst = (global T*)((global uchar*)dst +                                      \
-                    dst_stride * max(cols - index_x - cols_load, 0)) + \
-        index_y * channels;
-#endif
-
-#if defined(ROTATE270_U8C3) || defined(ROTATE270_F32C3) || \
-  defined(ROTATE270_U8C4) || defined(ROTATE270_F32C4) || \
-  defined(ROTATE180_U8C3) || defined(ROTATE180_F32C3) || \
-  defined(ROTATE180_U8C4) || defined(ROTATE180_F32C4) || \
-  defined(ROTATE90_U8C3) || defined(ROTATE90_F32C3) || \
-  defined(ROTATE90_U8C4) || defined(ROTATE90_F32C4) || defined(ALL_KERNELS)
-#define ROTATE_SAVE_ROW_CN_IF_1(T, rows_load, channels, degree) \
-  if (rows_remained >= rows_load) {                             \
-    ROTATE_SAVE_##degree##_OUTPUT_CN_##rows_load(T, channels)   \
-  }
-
-#define ROTATE_SAVE_ROW_CN_IF_2(T, rows_load, channels, degree) \
-  ROTATE_SAVE_ROW_CN_IF_1(T, rows_load, channels, degree)       \
-  if (rows_remained == 1) {                                     \
-    ROTATE_SAVE_##degree##_OUTPUT_CN_##1(T, channels)           \
-  }
-
-#define ROTATE_SAVE_ROW_CN_IF_3(T, rows_load, channels, degree) \
-  ROTATE_SAVE_ROW_CN_IF_2(T, rows_load, channels, degree)       \
-  if (rows_remained == 2) {                                     \
-    ROTATE_SAVE_##degree##_OUTPUT_CN_##2(T, channels)           \
-  }
-
-#define ROTATE_SAVE_ROW_CN_IF_4(T, rows_load, channels, degree) \
-  ROTATE_SAVE_ROW_CN_IF_3(T, rows_load, channels, degree)       \
-  if (rows_remained == 3) {                                     \
-    ROTATE_SAVE_##degree##_OUTPUT_CN_##3(T, channels)           \
-  }
-#endif
-// =================================================================
-
-#if defined(ROTATE270_U8C3) || defined(ROTATE270_F32C3) || \
-  defined(ROTATE270_U8C4) || defined(ROTATE270_F32C4) || \
-  defined(ROTATE180_U8C3) || defined(ROTATE180_F32C3) || \
-  defined(ROTATE180_U8C4) || defined(ROTATE180_F32C4) || \
-  defined(ROTATE90_U8C3) || defined(ROTATE90_F32C3) || \
-  defined(ROTATE90_U8C4) || defined(ROTATE90_F32C4) || defined(ALL_KERNELS)
-#define ROTATE_KERNEL_CN_TYPE(base_type, T, channels, rows_load, degree)      \
-  __kernel void rotateC##channels##degree##base_type##Kernel(                 \
-      global const T* src, int rows, int cols, int src_stride, global T* dst, \
-      int dst_stride) {                                                       \
-    int element_x = get_global_id(0);                                         \
-    int element_y = get_global_id(1);                                         \
-    int index_x = element_x, index_y = element_y * rows_load;                 \
-    if (index_x >= cols || index_y >= rows) {                                 \
-      return;                                                                 \
-    }                                                                         \
-                                                                              \
-    src = (global const T*)((global uchar*)src + index_y * src_stride);              \
-    int rows_remained = rows - index_y;                                       \
-                                                                              \
-    T##channels input_value[rows_load];                                       \
-    for (int i = 0; i < min(rows_remained, rows_load); i++) {                 \
-      input_value[i] = vload##channels(element_x, src);                       \
-      src = (global const T*)((global uchar*)src + src_stride);                      \
-    }                                                                         \
-                                                                              \
-    ROTATE_DST_CN_##degree(T, rows_load, 1, channels)                         \
-        ROTATE_SAVE_ROW_CN_IF_##rows_load(T, rows_load, channels, degree)     \
-  }
-#endif
-
 #if defined(ROTATE90_U8C1) || defined(ALL_KERNELS)
-ROTATE_KERNEL_C1_TYPE(U8, uchar, 4, 4, 90)
-#endif
-#if defined(ROTATE90_F32C1) || defined(ALL_KERNELS)
-ROTATE_KERNEL_C1_TYPE(F32, float, 2, 2, 90)
+__kernel
+void rotateC190U8Kernel(global const uchar* src, int rows, int cols,
+                        int src_stride, global uchar* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x * 4, index_y = element_y * 4;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const uchar*)((global uchar*)src + index_y * src_stride);
+  int cols_remained = cols - index_x, rows_remained = rows - index_y;
+  uchar4 input_value[4];
+  for (int i = 0; i < min(rows_remained, 4); i++) {
+    input_value[i] = vload4(element_x, src);
+    src = (global const uchar*)((global uchar*)src + src_stride);
+  }
+  dst = (global uchar*)((global uchar*)dst + dst_stride * index_x) +
+        max(rows - index_y - 4, 0);
+  if (cols_remained >= 4) {
+    if (rows_remained >= 4) {
+      uchar4 output_value;
+      output_value = (uchar4)(input_value[3].x, input_value[2].x,
+                              input_value[1].x, input_value[0].x);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar4)(input_value[3].y, input_value[2].y,
+                              input_value[1].y, input_value[0].y);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar4)(input_value[3].z, input_value[2].z,
+                              input_value[1].z, input_value[0].z);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar4)(input_value[3].w, input_value[2].w,
+                              input_value[1].w, input_value[0].w);
+      vstore4(output_value, 0, dst);
+    }
+    else if (rows_remained == 1) {
+      uchar output_value;
+      output_value = (uchar)(input_value[0].x);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar)(input_value[0].y);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar)(input_value[0].z);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar)(input_value[0].w);
+      dst[0] = output_value;
+    }
+    else if (rows_remained == 2) {
+      uchar2 output_value;
+      output_value = (uchar2)(input_value[1].x, input_value[0].x);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar2)(input_value[1].y, input_value[0].y);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar2)(input_value[1].z, input_value[0].z);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar2)(input_value[1].w, input_value[0].w);
+      vstore2(output_value, 0, dst);
+    }
+    else if (rows_remained == 3) {
+      uchar3 output_value;
+      output_value =
+          (uchar3)(input_value[2].x, input_value[1].x, input_value[0].x);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value =
+          (uchar3)(input_value[2].y, input_value[1].y, input_value[0].y);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value =
+          (uchar3)(input_value[2].z, input_value[1].z, input_value[0].z);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value =
+          (uchar3)(input_value[2].w, input_value[1].w, input_value[0].w);
+      vstore3(output_value, 0, dst);
+    }
+  }
+  else if (cols_remained == 1) {
+    if (rows_remained >= 4) {
+      uchar4 output_value;
+      output_value = (uchar4)(input_value[3].x, input_value[2].x,
+                              input_value[1].x, input_value[0].x);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 1) {
+      uchar output_value;
+      output_value = (uchar)(input_value[0].x);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 2) {
+      uchar2 output_value;
+      output_value = (uchar2)(input_value[1].x, input_value[0].x);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 3) {
+      uchar3 output_value;
+      output_value =
+          (uchar3)(input_value[2].x, input_value[1].x, input_value[0].x);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+  }
+  else if (cols_remained == 2) {
+    if (rows_remained >= 4) {
+      uchar4 output_value;
+      output_value = (uchar4)(input_value[3].x, input_value[2].x,
+                              input_value[1].x, input_value[0].x);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar4)(input_value[3].y, input_value[2].y,
+                              input_value[1].y, input_value[0].y);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 1) {
+      uchar output_value;
+      output_value = (uchar)(input_value[0].x);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar)(input_value[0].y);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 2) {
+      uchar2 output_value;
+      output_value = (uchar2)(input_value[1].x, input_value[0].x);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar2)(input_value[1].y, input_value[0].y);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 3) {
+      uchar3 output_value;
+      output_value =
+          (uchar3)(input_value[2].x, input_value[1].x, input_value[0].x);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value =
+          (uchar3)(input_value[2].y, input_value[1].y, input_value[0].y);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+  }
+  else if (cols_remained == 3) {
+    if (rows_remained >= 4) {
+      uchar4 output_value;
+      output_value = (uchar4)(input_value[3].x, input_value[2].x,
+                              input_value[1].x, input_value[0].x);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar4)(input_value[3].y, input_value[2].y,
+                              input_value[1].y, input_value[0].y);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar4)(input_value[3].z, input_value[2].z,
+                              input_value[1].z, input_value[0].z);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 1) {
+      uchar output_value;
+      output_value = (uchar)(input_value[0].x);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar)(input_value[0].y);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar)(input_value[0].z);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 2) {
+      uchar2 output_value;
+      output_value = (uchar2)(input_value[1].x, input_value[0].x);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar2)(input_value[1].y, input_value[0].y);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar2)(input_value[1].z, input_value[0].z);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 3) {
+      uchar3 output_value;
+      output_value =
+          (uchar3)(input_value[2].x, input_value[1].x, input_value[0].x);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value =
+          (uchar3)(input_value[2].y, input_value[1].y, input_value[0].y);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value =
+          (uchar3)(input_value[2].z, input_value[1].z, input_value[0].z);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+  }
+}
 #endif
 
 #if defined(ROTATE180_U8C1) || defined(ALL_KERNELS)
-ROTATE_KERNEL_C1_TYPE(U8, uchar, 4, 4, 180)
-#endif
-#if defined(ROTATE180_F32C1) || defined(ALL_KERNELS)
-ROTATE_KERNEL_C1_TYPE(F32, float, 2, 2, 180)
+__kernel
+void rotateC1180U8Kernel(global const uchar* src, int rows, int cols,
+                         int src_stride, global uchar* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x * 4, index_y = element_y * 4;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const uchar*)((global uchar*)src + index_y * src_stride);
+  int cols_remained = cols - index_x, rows_remained = rows - index_y;
+  uchar4 input_value[4];
+  for (int i = 0; i < min(rows_remained, 4); i++) {
+    input_value[i] = vload4(element_x, src);
+    src = (global const uchar*)((global uchar*)src + src_stride);
+  }
+  dst = (global uchar*)((global uchar*)dst +
+                        dst_stride * max(rows - index_y - 4, 0)) +
+        max(cols - index_x - 4, 0);
+  if (cols_remained >= 4) {
+    if (rows_remained >= 4) {
+      uchar4 output_value;
+      output_value = (uchar4)(input_value[3].w, input_value[3].z,
+                              input_value[3].y, input_value[3].x);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar4)(input_value[2].w, input_value[2].z,
+                              input_value[2].y, input_value[2].x);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar4)(input_value[1].w, input_value[1].z,
+                              input_value[1].y, input_value[1].x);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar4)(input_value[0].w, input_value[0].z,
+                              input_value[0].y, input_value[0].x);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 1) {
+      uchar4 output_value;
+      output_value = (uchar4)(input_value[0].w, input_value[0].z,
+                              input_value[0].y, input_value[0].x);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 2) {
+      uchar4 output_value;
+      output_value = (uchar4)(input_value[1].w, input_value[1].z,
+                              input_value[1].y, input_value[1].x);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar4)(input_value[0].w, input_value[0].z,
+                              input_value[0].y, input_value[0].x);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 3) {
+      uchar4 output_value;
+      output_value = (uchar4)(input_value[2].w, input_value[2].z,
+                              input_value[2].y, input_value[2].x);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar4)(input_value[1].w, input_value[1].z,
+                              input_value[1].y, input_value[1].x);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar4)(input_value[0].w, input_value[0].z,
+                              input_value[0].y, input_value[0].x);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+  }
+  else if (cols_remained == 1) {
+    if (rows_remained >= 4) {
+      uchar output_value;
+      output_value = (uchar)(input_value[3].x);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar)(input_value[2].x);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar)(input_value[1].x);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar)(input_value[0].x);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 1) {
+      uchar output_value;
+      output_value = (uchar)(input_value[0].x);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 2) {
+      uchar output_value;
+      output_value = (uchar)(input_value[1].x);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar)(input_value[0].x);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 3) {
+      uchar output_value;
+      output_value = (uchar)(input_value[2].x);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar)(input_value[1].x);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar)(input_value[0].x);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+  }
+  else if (cols_remained == 2) {
+    if (rows_remained >= 4) {
+      uchar2 output_value;
+      output_value = (uchar2)(input_value[3].y, input_value[3].x);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar2)(input_value[2].y, input_value[2].x);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar2)(input_value[1].y, input_value[1].x);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar2)(input_value[0].y, input_value[0].x);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 1) {
+      uchar2 output_value;
+      output_value = (uchar2)(input_value[0].y, input_value[0].x);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 2) {
+      uchar2 output_value;
+      output_value = (uchar2)(input_value[1].y, input_value[1].x);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar2)(input_value[0].y, input_value[0].x);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 3) {
+      uchar2 output_value;
+      output_value = (uchar2)(input_value[2].y, input_value[2].x);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar2)(input_value[1].y, input_value[1].x);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar2)(input_value[0].y, input_value[0].x);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+  }
+  else if (cols_remained == 3) {
+    if (rows_remained >= 4) {
+      uchar3 output_value;
+      output_value =
+          (uchar3)(input_value[3].z, input_value[3].y, input_value[3].x);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value =
+          (uchar3)(input_value[2].z, input_value[2].y, input_value[2].x);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value =
+          (uchar3)(input_value[1].z, input_value[1].y, input_value[1].x);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value =
+          (uchar3)(input_value[0].z, input_value[0].y, input_value[0].x);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 1) {
+      uchar3 output_value;
+      output_value =
+          (uchar3)(input_value[0].z, input_value[0].y, input_value[0].x);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 2) {
+      uchar3 output_value;
+      output_value =
+          (uchar3)(input_value[1].z, input_value[1].y, input_value[1].x);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value =
+          (uchar3)(input_value[0].z, input_value[0].y, input_value[0].x);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 3) {
+      uchar3 output_value;
+      output_value =
+          (uchar3)(input_value[2].z, input_value[2].y, input_value[2].x);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value =
+          (uchar3)(input_value[1].z, input_value[1].y, input_value[1].x);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value =
+          (uchar3)(input_value[0].z, input_value[0].y, input_value[0].x);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+  }
+}
 #endif
 
 #if defined(ROTATE270_U8C1) || defined(ALL_KERNELS)
-ROTATE_KERNEL_C1_TYPE(U8, uchar, 4, 4, 270)
+__kernel
+void rotateC1270U8Kernel(global const uchar* src, int rows, int cols,
+                         int src_stride, global uchar* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x * 4, index_y = element_y * 4;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const uchar*)((global uchar*)src + index_y * src_stride);
+  int cols_remained = cols - index_x, rows_remained = rows - index_y;
+  uchar4 input_value[4];
+  for (int i = 0; i < min(rows_remained, 4); i++) {
+    input_value[i] = vload4(element_x, src);
+    src = (global const uchar*)((global uchar*)src + src_stride);
+  }
+  dst = (global uchar*)((global uchar*)dst +
+                        dst_stride * max(cols - index_x - 4, 0)) +
+        index_y;
+  if (cols_remained >= 4) {
+    if (rows_remained >= 4) {
+      uchar4 output_value;
+      output_value = (uchar4)(input_value[0].w, input_value[1].w,
+                              input_value[2].w, input_value[3].w);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar4)(input_value[0].z, input_value[1].z,
+                              input_value[2].z, input_value[3].z);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar4)(input_value[0].y, input_value[1].y,
+                              input_value[2].y, input_value[3].y);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar4)(input_value[0].x, input_value[1].x,
+                              input_value[2].x, input_value[3].x);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 1) {
+      uchar output_value;
+      output_value = (uchar)(input_value[0].w);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar)(input_value[0].z);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar)(input_value[0].y);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar)(input_value[0].x);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 2) {
+      uchar2 output_value;
+      output_value = (uchar2)(input_value[0].w, input_value[1].w);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar2)(input_value[0].z, input_value[1].z);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar2)(input_value[0].y, input_value[1].y);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar2)(input_value[0].x, input_value[1].x);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 3) {
+      uchar3 output_value;
+      output_value =
+          (uchar3)(input_value[0].w, input_value[1].w, input_value[2].w);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value =
+          (uchar3)(input_value[0].z, input_value[1].z, input_value[2].z);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value =
+          (uchar3)(input_value[0].y, input_value[1].y, input_value[2].y);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value =
+          (uchar3)(input_value[0].x, input_value[1].x, input_value[2].x);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+  }
+  else if (cols_remained == 1) {
+    if (rows_remained >= 4) {
+      uchar4 output_value;
+      output_value = (uchar4)(input_value[0].x, input_value[1].x,
+                              input_value[2].x, input_value[3].x);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 1) {
+      uchar output_value;
+      output_value = (uchar)(input_value[0].x);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 2) {
+      uchar2 output_value;
+      output_value = (uchar2)(input_value[0].x, input_value[1].x);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 3) {
+      uchar3 output_value;
+      output_value =
+          (uchar3)(input_value[0].x, input_value[1].x, input_value[2].x);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+  }
+  else if (cols_remained == 2) {
+    if (rows_remained >= 4) {
+      uchar4 output_value;
+      output_value = (uchar4)(input_value[0].y, input_value[1].y,
+                              input_value[2].y, input_value[3].y);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar4)(input_value[0].x, input_value[1].x,
+                              input_value[2].x, input_value[3].x);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 1) {
+      uchar output_value;
+      output_value = (uchar)(input_value[0].y);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar)(input_value[0].x);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 2) {
+      uchar2 output_value;
+      output_value = (uchar2)(input_value[0].y, input_value[1].y);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar2)(input_value[0].x, input_value[1].x);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 3) {
+      uchar3 output_value;
+      output_value =
+          (uchar3)(input_value[0].y, input_value[1].y, input_value[2].y);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value =
+          (uchar3)(input_value[0].x, input_value[1].x, input_value[2].x);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+  }
+  else if (cols_remained == 3) {
+    if (rows_remained >= 4) {
+      uchar4 output_value;
+      output_value = (uchar4)(input_value[0].z, input_value[1].z,
+                              input_value[2].z, input_value[3].z);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar4)(input_value[0].y, input_value[1].y,
+                              input_value[2].y, input_value[3].y);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar4)(input_value[0].x, input_value[1].x,
+                              input_value[2].x, input_value[3].x);
+      vstore4(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 1) {
+      uchar output_value;
+      output_value = (uchar)(input_value[0].z);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar)(input_value[0].y);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar)(input_value[0].x);
+      dst[0] = output_value;
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 2) {
+      uchar2 output_value;
+      output_value = (uchar2)(input_value[0].z, input_value[1].z);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar2)(input_value[0].y, input_value[1].y);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value = (uchar2)(input_value[0].x, input_value[1].x);
+      vstore2(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 3) {
+      uchar3 output_value;
+      output_value =
+          (uchar3)(input_value[0].z, input_value[1].z, input_value[2].z);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value =
+          (uchar3)(input_value[0].y, input_value[1].y, input_value[2].y);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+      output_value =
+          (uchar3)(input_value[0].x, input_value[1].x, input_value[2].x);
+      vstore3(output_value, 0, dst);
+      dst = (global uchar*)((global uchar*)dst + dst_stride);
+    }
+  }
+}
 #endif
+
+#if defined(ROTATE90_F32C1) || defined(ALL_KERNELS)
+__kernel
+void rotateC190F32Kernel(global const float* src, int rows, int cols,
+                         int src_stride, global float* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x * 2, index_y = element_y * 2;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const float*)((global uchar*)src + index_y * src_stride);
+  int cols_remained = cols - index_x, rows_remained = rows - index_y;
+  float2 input_value[2];
+  for (int i = 0; i < min(rows_remained, 2); i++) {
+    input_value[i] = vload2(element_x, src);
+    src = (global const float*)((global uchar*)src + src_stride);
+  }
+  dst = (global float*)((global uchar*)dst + dst_stride * index_x) +
+        max(rows - index_y - 2, 0);
+  if (cols_remained >= 2) {
+    if (rows_remained >= 2) {
+      float2 output_value;
+      output_value = (float2)(input_value[1].x, input_value[0].x);
+      vstore2(output_value, 0, dst);
+      dst = (global float*)((global uchar*)dst + dst_stride);
+      output_value = (float2)(input_value[1].y, input_value[0].y);
+      vstore2(output_value, 0, dst);
+      dst = (global float*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 1) {
+      float output_value;
+      output_value = (float)(input_value[0].x);
+      dst[0] = output_value;
+      dst = (global float*)((global uchar*)dst + dst_stride);
+      output_value = (float)(input_value[0].y);
+      dst[0] = output_value;
+      dst = (global float*)((global uchar*)dst + dst_stride);
+    }
+  }
+  else if (cols_remained == 1) {
+    if (rows_remained >= 2) {
+      float2 output_value;
+      output_value = (float2)(input_value[1].x, input_value[0].x);
+      vstore2(output_value, 0, dst);
+      dst = (global float*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 1) {
+      float output_value;
+      output_value = (float)(input_value[0].x);
+      dst[0] = output_value;
+      dst = (global float*)((global uchar*)dst + dst_stride);
+    }
+  }
+}
+#endif
+
+#if defined(ROTATE180_F32C1) || defined(ALL_KERNELS)
+__kernel
+void rotateC1180F32Kernel(global const float* src, int rows, int cols,
+                          int src_stride, global float* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x * 2, index_y = element_y * 2;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const float*)((global uchar*)src + index_y * src_stride);
+  int cols_remained = cols - index_x, rows_remained = rows - index_y;
+  float2 input_value[2];
+  for (int i = 0; i < min(rows_remained, 2); i++) {
+    input_value[i] = vload2(element_x, src);
+    src = (global const float*)((global uchar*)src + src_stride);
+  }
+  dst = (global float*)((global uchar*)dst +
+                        dst_stride * max(rows - index_y - 2, 0)) +
+        max(cols - index_x - 2, 0);
+  if (cols_remained >= 2) {
+    if (rows_remained >= 2) {
+      float2 output_value;
+      output_value = (float2)(input_value[1].y, input_value[1].x);
+      vstore2(output_value, 0, dst);
+      dst = (global float*)((global uchar*)dst + dst_stride);
+      output_value = (float2)(input_value[0].y, input_value[0].x);
+      vstore2(output_value, 0, dst);
+      dst = (global float*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 1) {
+      float2 output_value;
+      output_value = (float2)(input_value[0].y, input_value[0].x);
+      vstore2(output_value, 0, dst);
+      dst = (global float*)((global uchar*)dst + dst_stride);
+    }
+  }
+  else if (cols_remained == 1) {
+    if (rows_remained >= 2) {
+      float output_value;
+      output_value = (float)(input_value[1].x);
+      dst[0] = output_value;
+      dst = (global float*)((global uchar*)dst + dst_stride);
+      output_value = (float)(input_value[0].x);
+      dst[0] = output_value;
+      dst = (global float*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 1) {
+      float output_value;
+      output_value = (float)(input_value[0].x);
+      dst[0] = output_value;
+      dst = (global float*)((global uchar*)dst + dst_stride);
+    }
+  }
+}
+#endif
+
 #if defined(ROTATE270_F32C1) || defined(ALL_KERNELS)
-ROTATE_KERNEL_C1_TYPE(F32, float, 2, 2, 270)
+__kernel
+void rotateC1270F32Kernel(global const float* src, int rows, int cols,
+                          int src_stride, global float* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x * 2, index_y = element_y * 2;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const float*)((global uchar*)src + index_y * src_stride);
+  int cols_remained = cols - index_x, rows_remained = rows - index_y;
+  float2 input_value[2];
+  for (int i = 0; i < min(rows_remained, 2); i++) {
+    input_value[i] = vload2(element_x, src);
+    src = (global const float*)((global uchar*)src + src_stride);
+  }
+  dst = (global float*)((global uchar*)dst +
+                        dst_stride * max(cols - index_x - 2, 0)) +
+        index_y;
+  if (cols_remained >= 2) {
+    if (rows_remained >= 2) {
+      float2 output_value;
+      output_value = (float2)(input_value[0].y, input_value[1].y);
+      vstore2(output_value, 0, dst);
+      dst = (global float*)((global uchar*)dst + dst_stride);
+      output_value = (float2)(input_value[0].x, input_value[1].x);
+      vstore2(output_value, 0, dst);
+      dst = (global float*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 1) {
+      float output_value;
+      output_value = (float)(input_value[0].y);
+      dst[0] = output_value;
+      dst = (global float*)((global uchar*)dst + dst_stride);
+      output_value = (float)(input_value[0].x);
+      dst[0] = output_value;
+      dst = (global float*)((global uchar*)dst + dst_stride);
+    }
+  }
+  else if (cols_remained == 1) {
+    if (rows_remained >= 2) {
+      float2 output_value;
+      output_value = (float2)(input_value[0].x, input_value[1].x);
+      vstore2(output_value, 0, dst);
+      dst = (global float*)((global uchar*)dst + dst_stride);
+    }
+    else if (rows_remained == 1) {
+      float output_value;
+      output_value = (float)(input_value[0].x);
+      dst[0] = output_value;
+      dst = (global float*)((global uchar*)dst + dst_stride);
+    }
+  }
+}
 #endif
 
 #if defined(ROTATE90_U8C3) || defined(ALL_KERNELS)
-ROTATE_KERNEL_CN_TYPE(U8, uchar, 3, 4, 90)
-#endif
-#if defined(ROTATE90_F32C3) || defined(ALL_KERNELS)
-ROTATE_KERNEL_CN_TYPE(F32, float, 3, 2, 90)
+__kernel
+void rotateC390U8Kernel(global const uchar* src, int rows, int cols,
+                        int src_stride, global uchar* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x, index_y = element_y * 4;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const uchar*)((global uchar*)src + index_y * src_stride);
+  int rows_remained = rows - index_y;
+  uchar3 input_value[4];
+  for (int i = 0; i < min(rows_remained, 4); i++) {
+    input_value[i] = vload3(element_x, src);
+    src = (global const uchar*)((global uchar*)src + src_stride);
+  }
+  dst = (global uchar*)((global uchar*)dst + dst_stride * index_x) +
+        max(rows - index_y - 4, 0) * 3;
+  if (rows_remained >= 4) {
+    vstore3(input_value[3], 0, dst);
+    dst += 3;
+    vstore3(input_value[2], 0, dst);
+    dst += 3;
+    vstore3(input_value[1], 0, dst);
+    dst += 3;
+    vstore3(input_value[0], 0, dst);
+  }
+  if (rows_remained == 1) {
+    vstore3(input_value[0], 0, dst);
+  }
+  if (rows_remained == 2) {
+    vstore3(input_value[1], 0, dst);
+    dst += 3;
+    vstore3(input_value[0], 0, dst);
+  }
+  if (rows_remained == 3) {
+    vstore3(input_value[2], 0, dst);
+    dst += 3;
+    vstore3(input_value[1], 0, dst);
+    dst += 3;
+    vstore3(input_value[0], 0, dst);
+  }
+}
 #endif
 
 #if defined(ROTATE180_U8C3) || defined(ALL_KERNELS)
-ROTATE_KERNEL_CN_TYPE(U8, uchar, 3, 4, 180)
-#endif
-#if defined(ROTATE180_F32C3) || defined(ALL_KERNELS)
-ROTATE_KERNEL_CN_TYPE(F32, float, 3, 2, 180)
+__kernel
+void rotateC3180U8Kernel(global const uchar* src, int rows, int cols,
+                         int src_stride, global uchar* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x, index_y = element_y * 4;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const uchar*)((global uchar*)src + index_y * src_stride);
+  int rows_remained = rows - index_y;
+  uchar3 input_value[4];
+  for (int i = 0; i < min(rows_remained, 4); i++) {
+    input_value[i] = vload3(element_x, src);
+    src = (global const uchar*)((global uchar*)src + src_stride);
+  }
+  dst = (global uchar*)((global uchar*)dst +
+                        dst_stride * max(rows - index_y - 4, 0)) +
+        max(cols - index_x - 1, 0) * 3;
+  if (rows_remained >= 4) {
+    vstore3(input_value[3], 0, dst);
+    dst += dst_stride;
+    vstore3(input_value[2], 0, dst);
+    dst += dst_stride;
+    vstore3(input_value[1], 0, dst);
+    dst += dst_stride;
+    vstore3(input_value[0], 0, dst);
+  }
+  if (rows_remained == 1) {
+    vstore3(input_value[0], 0, dst);
+  }
+  if (rows_remained == 2) {
+    vstore3(input_value[1], 0, dst);
+    dst += dst_stride;
+    vstore3(input_value[0], 0, dst);
+  }
+  if (rows_remained == 3) {
+    vstore3(input_value[2], 0, dst);
+    dst += dst_stride;
+    vstore3(input_value[1], 0, dst);
+    dst += dst_stride;
+    vstore3(input_value[0], 0, dst);
+  }
+}
 #endif
 
 #if defined(ROTATE270_U8C3) || defined(ALL_KERNELS)
-ROTATE_KERNEL_CN_TYPE(U8, uchar, 3, 4, 270)
+__kernel
+void rotateC3270U8Kernel(global const uchar* src, int rows, int cols,
+                         int src_stride, global uchar* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x, index_y = element_y * 4;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const uchar*)((global uchar*)src + index_y * src_stride);
+  int rows_remained = rows - index_y;
+  uchar3 input_value[4];
+  for (int i = 0; i < min(rows_remained, 4); i++) {
+    input_value[i] = vload3(element_x, src);
+    src = (global const uchar*)((global uchar*)src + src_stride);
+  }
+  dst = (global uchar*)((global uchar*)dst +
+                        dst_stride * max(cols - index_x - 1, 0)) +
+        index_y * 3;
+  if (rows_remained >= 4) {
+    vstore3(input_value[0], 0, dst);
+    dst += 3;
+    vstore3(input_value[1], 0, dst);
+    dst += 3;
+    vstore3(input_value[2], 0, dst);
+    dst += 3;
+    vstore3(input_value[3], 0, dst);
+  }
+  if (rows_remained == 1) {
+    vstore3(input_value[0], 0, dst);
+  }
+  if (rows_remained == 2) {
+    vstore3(input_value[0], 0, dst);
+    dst += 3;
+    vstore3(input_value[1], 0, dst);
+  }
+  if (rows_remained == 3) {
+    vstore3(input_value[0], 0, dst);
+    dst += 3;
+    vstore3(input_value[1], 0, dst);
+    dst += 3;
+    vstore3(input_value[2], 0, dst);
+  }
+}
 #endif
+
+#if defined(ROTATE90_F32C3) || defined(ALL_KERNELS)
+__kernel
+void rotateC390F32Kernel(global const float* src, int rows, int cols,
+                         int src_stride, global float* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x, index_y = element_y * 2;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const float*)((global uchar*)src + index_y * src_stride);
+  int rows_remained = rows - index_y;
+  float3 input_value[2];
+  for (int i = 0; i < min(rows_remained, 2); i++) {
+    input_value[i] = vload3(element_x, src);
+    src = (global const float*)((global uchar*)src + src_stride);
+  }
+  dst = (global float*)((global uchar*)dst + dst_stride * index_x) +
+        max(rows - index_y - 2, 0) * 3;
+  if (rows_remained >= 2) {
+    vstore3(input_value[1], 0, dst);
+    dst += 3;
+    vstore3(input_value[0], 0, dst);
+  }
+  if (rows_remained == 1) {
+    vstore3(input_value[0], 0, dst);
+  }
+}
+#endif
+
+#if defined(ROTATE180_F32C3) || defined(ALL_KERNELS)
+__kernel
+void rotateC3180F32Kernel(global const float* src, int rows, int cols,
+                          int src_stride, global float* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x, index_y = element_y * 2;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const float*)((global uchar*)src + index_y * src_stride);
+  int rows_remained = rows - index_y;
+  float3 input_value[2];
+  for (int i = 0; i < min(rows_remained, 2); i++) {
+    input_value[i] = vload3(element_x, src);
+    src = (global const float*)((global uchar*)src + src_stride);
+  }
+  dst = (global float*)((global uchar*)dst +
+                        dst_stride * max(rows - index_y - 2, 0)) +
+        max(cols - index_x - 1, 0) * 3;
+  if (rows_remained >= 2) {
+    vstore3(input_value[1], 0, dst);
+    dst += dst_stride;
+    vstore3(input_value[0], 0, dst);
+  }
+  if (rows_remained == 1) {
+    vstore3(input_value[0], 0, dst);
+  }
+}
+#endif
+
 #if defined(ROTATE270_F32C3) || defined(ALL_KERNELS)
-ROTATE_KERNEL_CN_TYPE(F32, float, 3, 2, 270)
+__kernel
+void rotateC3270F32Kernel(global const float* src, int rows, int cols,
+                          int src_stride, global float* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x, index_y = element_y * 2;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const float*)((global uchar*)src + index_y * src_stride);
+  int rows_remained = rows - index_y;
+  float3 input_value[2];
+  for (int i = 0; i < min(rows_remained, 2); i++) {
+    input_value[i] = vload3(element_x, src);
+    src = (global const float*)((global uchar*)src + src_stride);
+  }
+  dst = (global float*)((global uchar*)dst +
+                        dst_stride * max(cols - index_x - 1, 0)) +
+        index_y * 3;
+  if (rows_remained >= 2) {
+    vstore3(input_value[0], 0, dst);
+    dst += 3;
+    vstore3(input_value[1], 0, dst);
+  }
+  if (rows_remained == 1) {
+    vstore3(input_value[0], 0, dst);
+  }
+}
 #endif
 
 #if defined(ROTATE90_U8C4) || defined(ALL_KERNELS)
-ROTATE_KERNEL_CN_TYPE(U8, uchar, 4, 4, 90)
-#endif
-#if defined(ROTATE90_F32C4) || defined(ALL_KERNELS)
-ROTATE_KERNEL_CN_TYPE(F32, float, 4, 2, 90)
+__kernel
+void rotateC490U8Kernel(global const uchar* src, int rows, int cols,
+                        int src_stride, global uchar* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x, index_y = element_y * 4;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const uchar*)((global uchar*)src + index_y * src_stride);
+  int rows_remained = rows - index_y;
+  uchar4 input_value[4];
+  for (int i = 0; i < min(rows_remained, 4); i++) {
+    input_value[i] = vload4(element_x, src);
+    src = (global const uchar*)((global uchar*)src + src_stride);
+  }
+  dst = (global uchar*)((global uchar*)dst + dst_stride * index_x) +
+        max(rows - index_y - 4, 0) * 4;
+  if (rows_remained >= 4) {
+    vstore4(input_value[3], 0, dst);
+    dst += 4;
+    vstore4(input_value[2], 0, dst);
+    dst += 4;
+    vstore4(input_value[1], 0, dst);
+    dst += 4;
+    vstore4(input_value[0], 0, dst);
+  }
+  if (rows_remained == 1) {
+    vstore4(input_value[0], 0, dst);
+  }
+  if (rows_remained == 2) {
+    vstore4(input_value[1], 0, dst);
+    dst += 4;
+    vstore4(input_value[0], 0, dst);
+  }
+  if (rows_remained == 3) {
+    vstore4(input_value[2], 0, dst);
+    dst += 4;
+    vstore4(input_value[1], 0, dst);
+    dst += 4;
+    vstore4(input_value[0], 0, dst);
+  }
+}
 #endif
 
 #if defined(ROTATE180_U8C4) || defined(ALL_KERNELS)
-ROTATE_KERNEL_CN_TYPE(U8, uchar, 4, 4, 180)
-#endif
-#if defined(ROTATE180_F32C4) || defined(ALL_KERNELS)
-ROTATE_KERNEL_CN_TYPE(F32, float, 4, 2, 180)
+__kernel
+void rotateC4180U8Kernel(global const uchar* src, int rows, int cols,
+                         int src_stride, global uchar* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x, index_y = element_y * 4;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const uchar*)((global uchar*)src + index_y * src_stride);
+  int rows_remained = rows - index_y;
+  uchar4 input_value[4];
+  for (int i = 0; i < min(rows_remained, 4); i++) {
+    input_value[i] = vload4(element_x, src);
+    src = (global const uchar*)((global uchar*)src + src_stride);
+  }
+  dst = (global uchar*)((global uchar*)dst +
+                        dst_stride * max(rows - index_y - 4, 0)) +
+        max(cols - index_x - 1, 0) * 4;
+  if (rows_remained >= 4) {
+    vstore4(input_value[3], 0, dst);
+    dst += dst_stride;
+    vstore4(input_value[2], 0, dst);
+    dst += dst_stride;
+    vstore4(input_value[1], 0, dst);
+    dst += dst_stride;
+    vstore4(input_value[0], 0, dst);
+  }
+  if (rows_remained == 1) {
+    vstore4(input_value[0], 0, dst);
+  }
+  if (rows_remained == 2) {
+    vstore4(input_value[1], 0, dst);
+    dst += dst_stride;
+    vstore4(input_value[0], 0, dst);
+  }
+  if (rows_remained == 3) {
+    vstore4(input_value[2], 0, dst);
+    dst += dst_stride;
+    vstore4(input_value[1], 0, dst);
+    dst += dst_stride;
+    vstore4(input_value[0], 0, dst);
+  }
+}
 #endif
 
 #if defined(ROTATE270_U8C4) || defined(ALL_KERNELS)
-ROTATE_KERNEL_CN_TYPE(U8, uchar, 4, 4, 270)
+__kernel
+void rotateC4270U8Kernel(global const uchar* src, int rows, int cols,
+                         int src_stride, global uchar* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x, index_y = element_y * 4;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const uchar*)((global uchar*)src + index_y * src_stride);
+  int rows_remained = rows - index_y;
+  uchar4 input_value[4];
+  for (int i = 0; i < min(rows_remained, 4); i++) {
+    input_value[i] = vload4(element_x, src);
+    src = (global const uchar*)((global uchar*)src + src_stride);
+  }
+  dst = (global uchar*)((global uchar*)dst +
+                        dst_stride * max(cols - index_x - 1, 0)) +
+        index_y * 4;
+  if (rows_remained >= 4) {
+    vstore4(input_value[0], 0, dst);
+    dst += 4;
+    vstore4(input_value[1], 0, dst);
+    dst += 4;
+    vstore4(input_value[2], 0, dst);
+    dst += 4;
+    vstore4(input_value[3], 0, dst);
+  }
+  if (rows_remained == 1) {
+    vstore4(input_value[0], 0, dst);
+  }
+  if (rows_remained == 2) {
+    vstore4(input_value[0], 0, dst);
+    dst += 4;
+    vstore4(input_value[1], 0, dst);
+  }
+  if (rows_remained == 3) {
+    vstore4(input_value[0], 0, dst);
+    dst += 4;
+    vstore4(input_value[1], 0, dst);
+    dst += 4;
+    vstore4(input_value[2], 0, dst);
+  }
+}
 #endif
+
+#if defined(ROTATE90_F32C4) || defined(ALL_KERNELS)
+__kernel
+void rotateC4180F32Kernel(global const float* src, int rows, int cols,
+                          int src_stride, global float* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x, index_y = element_y * 2;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const float*)((global uchar*)src + index_y * src_stride);
+  int rows_remained = rows - index_y;
+  float4 input_value[2];
+  for (int i = 0; i < min(rows_remained, 2); i++) {
+    input_value[i] = vload4(element_x, src);
+    src = (global const float*)((global uchar*)src + src_stride);
+  }
+  dst = (global float*)((global uchar*)dst +
+                        dst_stride * max(rows - index_y - 2, 0)) +
+        max(cols - index_x - 1, 0) * 4;
+  if (rows_remained >= 2) {
+    vstore4(input_value[1], 0, dst);
+    dst += dst_stride;
+    vstore4(input_value[0], 0, dst);
+  }
+  if (rows_remained == 1) {
+    vstore4(input_value[0], 0, dst);
+  }
+}
+#endif
+
+#if defined(ROTATE180_F32C4) || defined(ALL_KERNELS)
+__kernel
+void rotateC4180F32Kernel(global const float* src, int rows, int cols,
+                          int src_stride, global float* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x, index_y = element_y * 2;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const float*)((global uchar*)src + index_y * src_stride);
+  int rows_remained = rows - index_y;
+  float4 input_value[2];
+  for (int i = 0; i < min(rows_remained, 2); i++) {
+    input_value[i] = vload4(element_x, src);
+    src = (global const float*)((global uchar*)src + src_stride);
+  }
+  dst = (global float*)((global uchar*)dst +
+                        dst_stride * max(rows - index_y - 2, 0)) +
+        max(cols - index_x - 1, 0) * 4;
+  if (rows_remained >= 2) {
+    vstore4(input_value[1], 0, dst);
+    dst += dst_stride;
+    vstore4(input_value[0], 0, dst);
+  }
+  if (rows_remained == 1) {
+    vstore4(input_value[0], 0, dst);
+  }
+}
+#endif
+
 #if defined(ROTATE270_F32C4) || defined(ALL_KERNELS)
-ROTATE_KERNEL_CN_TYPE(F32, float, 4, 2, 270)
+__kernel
+void rotateC4270F32Kernel(global const float* src, int rows, int cols,
+                          int src_stride, global float* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x, index_y = element_y * 2;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const float*)((global uchar*)src + index_y * src_stride);
+  int rows_remained = rows - index_y;
+  float4 input_value[2];
+  for (int i = 0; i < min(rows_remained, 2); i++) {
+    input_value[i] = vload4(element_x, src);
+    src = (global const float*)((global uchar*)src + src_stride);
+  }
+  dst = (global float*)((global uchar*)dst +
+                        dst_stride * max(cols - index_x - 1, 0)) +
+        index_y * 4;
+  if (rows_remained >= 2) {
+    vstore4(input_value[0], 0, dst);
+    dst += 4;
+    vstore4(input_value[1], 0, dst);
+  }
+  if (rows_remained == 1) {
+    vstore4(input_value[0], 0, dst);
+  }
+}
 #endif

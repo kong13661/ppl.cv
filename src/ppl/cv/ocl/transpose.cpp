@@ -24,118 +24,238 @@
 using namespace ppl::common;
 using namespace ppl::common::ocl;
 
-#define F32DIV 2
-#define F32OFFSET 1
-#define U8DIV 4
-#define U8OFFSET 2
-
-#define F32DIV_CN 1
-#define F32OFFSET_CN 0
-#define U8DIV_CN 4
-#define U8OFFSET_CN 2
-
 namespace ppl {
 namespace cv {
 namespace ocl {
 
-#define TRANSPOSE_C1_TYPE(base_type, T)                                      \
-  RetCode transposeC1##base_type(const cl_mem src, int rows, int cols,       \
-                                 int src_stride, cl_mem dst, int dst_stride, \
-                                 cl_command_queue queue) {                   \
-    PPL_ASSERT(src != nullptr);                                              \
-    PPL_ASSERT(dst != nullptr);                                              \
-    PPL_ASSERT(rows >= 1 && cols >= 1);                                      \
-    PPL_ASSERT(src_stride >= cols * (int)sizeof(T));                         \
-    PPL_ASSERT(dst_stride >= rows * (int)sizeof(T));                         \
-                                                                             \
-    FrameChain* frame_chain = getSharedFrameChain();                         \
-    frame_chain->setProjectName("cv");                                       \
-    SET_PROGRAM_SOURCE(frame_chain, transpose);                              \
-                                                                             \
-    int global_cols, global_rows;                                            \
-    global_cols = divideUp(cols, base_type##DIV, base_type##OFFSET);         \
-    global_rows = divideUp(rows, base_type##DIV, base_type##OFFSET);         \
-    size_t local_size[] = {kBlockDimX0, kBlockDimY0};                        \
-    size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};       \
-                                                                             \
-    frame_chain->setCompileOptions("-D TRANSPOSE_" #base_type "1C");         \
-    runOclKernel(frame_chain, "transpose" #base_type "C1Kernel", 2,          \
-                 global_size, local_size, src, rows, cols, src_stride, dst,  \
-                 dst_stride);                                                \
-                                                                             \
-    return RC_SUCCESS;                                                       \
-  }
+RetCode transposeC1U8(const cl_mem src, int rows, int cols, int src_stride,
+                      cl_mem dst, int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(rows >= 1 && cols >= 1);
+  PPL_ASSERT(src_stride >= cols * (int)sizeof(uchar));
+  PPL_ASSERT(dst_stride >= rows * (int)sizeof(uchar));
 
-#define TRANSPOSE_CN_TYPE(base_type, T, channels)                              \
-  RetCode transposeC##channels##base_type(                                     \
-      const cl_mem src, int rows, int cols, int src_stride, cl_mem dst,        \
-      int dst_stride, cl_command_queue queue) {                                \
-    PPL_ASSERT(src != nullptr);                                                \
-    PPL_ASSERT(dst != nullptr);                                                \
-    PPL_ASSERT(rows >= 1 && cols >= 1);                                        \
-    PPL_ASSERT(src_stride >= cols * (int)sizeof(T) * channels);                \
-    PPL_ASSERT(dst_stride >= rows * (int)sizeof(T) * channels);                \
-                                                                               \
-    FrameChain* frame_chain = getSharedFrameChain();                           \
-    frame_chain->setProjectName("cv");                                         \
-    SET_PROGRAM_SOURCE(frame_chain, transpose);                                \
-                                                                               \
-    int global_cols, global_rows;                                              \
-    global_cols = cols;                                                        \
-    global_rows = divideUp(rows, base_type##DIV_CN, base_type##OFFSET_CN);     \
-    size_t local_size[] = {kBlockDimX0, kBlockDimY0};                          \
-    size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};         \
-                                                                               \
-    frame_chain->setCompileOptions("-D TRANSPOSE_" #base_type "C" #channels);  \
-    runOclKernel(frame_chain, "transpose" #base_type "C" #channels "Kernel",   \
-                 2, global_size, local_size, src, rows, cols, src_stride, dst, \
-                 dst_stride);                                                  \
-                                                                               \
-    return RC_SUCCESS;                                                         \
-  }
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, transpose);
 
-TRANSPOSE_C1_TYPE(U8, uchar)
-TRANSPOSE_C1_TYPE(F32, float)
-TRANSPOSE_CN_TYPE(U8, uchar, 3)
-TRANSPOSE_CN_TYPE(U8, uchar, 4)
-TRANSPOSE_CN_TYPE(F32, float, 3)
-TRANSPOSE_CN_TYPE(F32, float, 4)
+  int global_cols, global_rows;
+  global_cols = divideUp(cols, 4, 2);
+  global_rows = divideUp(rows, 4, 2);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D TRANSPOSE_U8C1");
+  runOclKernel(frame_chain, "transposeU8C1Kernel", 2, global_size, local_size,
+               src, rows, cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
 
+RetCode transposeC3U8(const cl_mem src, int rows, int cols, int src_stride,
+                      cl_mem dst, int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(rows >= 1 && cols >= 1);
+  PPL_ASSERT(src_stride >= cols * (int)sizeof(uchar) * 3);
+  PPL_ASSERT(dst_stride >= rows * (int)sizeof(uchar) * 3);
 
-#define TRANSPOSE_TYPE_C1_TEMPLATE(base_type, T)                               \
-  template <>                                                                  \
-  RetCode Transpose<T, 1>(cl_command_queue queue, int height, int width,       \
-                          int inWidthStride, const cl_mem inData,              \
-                          int outWidthStride, cl_mem outData) {                \
-    inWidthStride *= sizeof(T);                                                \
-    outWidthStride *= sizeof(T);                                               \
-    RetCode code = transposeC1##base_type(                                     \
-        inData, height, width, inWidthStride, outData, outWidthStride, queue); \
-                                                                               \
-    return code;                                                               \
-  }
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, transpose);
 
-#define TRANSPOSE_TYPE_CN_TEMPLATE(base_type, T, channels)                     \
-  template <>                                                                  \
-  RetCode Transpose<T, channels>(cl_command_queue queue, int height, int width,\
-                          int inWidthStride, const cl_mem inData,              \
-                          int outWidthStride, cl_mem outData) {                \
-    inWidthStride *= sizeof(T);                                                \
-    outWidthStride *= sizeof(T);                                               \
-    RetCode code = transposeC##channels##base_type(                            \
-        inData, height, width, inWidthStride, outData, outWidthStride, queue); \
-                                                                               \
-    return code;                                                               \
-  }
+  int global_cols, global_rows;
+  global_cols = cols;
+  global_rows = divideUp(rows, 4, 2);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D TRANSPOSE_U8C3");
+  runOclKernel(frame_chain, "transposeU8C3Kernel", 2, global_size, local_size,
+               src, rows, cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
 
-TRANSPOSE_TYPE_C1_TEMPLATE(U8, uchar)
-TRANSPOSE_TYPE_C1_TEMPLATE(F32, float)
-TRANSPOSE_TYPE_CN_TEMPLATE(U8, uchar, 3)
-TRANSPOSE_TYPE_CN_TEMPLATE(U8, uchar, 4)
-TRANSPOSE_TYPE_CN_TEMPLATE(F32, float, 3)
-TRANSPOSE_TYPE_CN_TEMPLATE(F32, float, 4)
+RetCode transposeC4U8(const cl_mem src, int rows, int cols, int src_stride,
+                      cl_mem dst, int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(rows >= 1 && cols >= 1);
+  PPL_ASSERT(src_stride >= cols * (int)sizeof(uchar) * 4);
+  PPL_ASSERT(dst_stride >= rows * (int)sizeof(uchar) * 4);
 
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, transpose);
 
-}  // namespace ocl
-}  // namespace cv
-}  // namespace ppl
+  int global_cols, global_rows;
+  global_cols = cols;
+  global_rows = divideUp(rows, 4, 2);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D TRANSPOSE_U8C4");
+  runOclKernel(frame_chain, "transposeU8C4Kernel", 2, global_size, local_size,
+               src, rows, cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
+
+RetCode transposeC1F32(const cl_mem src, int rows, int cols, int src_stride,
+                       cl_mem dst, int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(rows >= 1 && cols >= 1);
+  PPL_ASSERT(src_stride >= cols * (int)sizeof(float));
+  PPL_ASSERT(dst_stride >= rows * (int)sizeof(float));
+
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, transpose);
+
+  int global_cols, global_rows;
+  global_cols = divideUp(cols, 2, 1);
+  global_rows = divideUp(rows, 2, 1);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D TRANSPOSE_F32C1");
+  runOclKernel(frame_chain, "transposeF32C1Kernel", 2, global_size, local_size,
+               src, rows, cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
+
+RetCode transposeC3F32(const cl_mem src, int rows, int cols, int src_stride,
+                       cl_mem dst, int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(rows >= 1 && cols >= 1);
+  PPL_ASSERT(src_stride >= cols * (int)sizeof(float) * 3);
+  PPL_ASSERT(dst_stride >= rows * (int)sizeof(float) * 3);
+
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, transpose);
+
+  int global_cols, global_rows;
+  global_cols = cols;
+  global_rows = divideUp(rows, 1, 0);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D TRANSPOSE_F32C3");
+  runOclKernel(frame_chain, "transposeF32C3Kernel", 2, global_size, local_size,
+               src, rows, cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
+
+RetCode transposeC4F32(const cl_mem src, int rows, int cols, int src_stride,
+                       cl_mem dst, int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(rows >= 1 && cols >= 1);
+  PPL_ASSERT(src_stride >= cols * (int)sizeof(float) * 4);
+  PPL_ASSERT(dst_stride >= rows * (int)sizeof(float) * 4);
+
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, transpose);
+
+  int global_cols, global_rows;
+  global_cols = cols;
+  global_rows = divideUp(rows, 1, 0);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D TRANSPOSE_F32C4");
+  runOclKernel(frame_chain, "transposeF32C4Kernel", 2, global_size, local_size,
+               src, rows, cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
+
+template <>
+RetCode Transpose<uchar, 1>(cl_command_queue queue,
+                            int height,
+                            int width,
+                            int inWidthStride,
+                            const cl_mem inData,
+                            int outWidthStride,
+                            cl_mem outData) {
+  inWidthStride *= sizeof(uchar);
+  outWidthStride *= sizeof(uchar);
+  RetCode code = transposeC1U8(inData, height, width, inWidthStride, outData,
+                               outWidthStride, queue);
+  return code;
+}
+
+template <>
+RetCode Transpose<uchar, 3>(cl_command_queue queue,
+                            int height,
+                            int width,
+                            int inWidthStride,
+                            const cl_mem inData,
+                            int outWidthStride,
+                            cl_mem outData) {
+  inWidthStride *= sizeof(uchar);
+  outWidthStride *= sizeof(uchar);
+  RetCode code = transposeC3U8(inData, height, width, inWidthStride, outData,
+                               outWidthStride, queue);
+  return code;
+}
+
+template <>
+RetCode Transpose<uchar, 4>(cl_command_queue queue,
+                            int height,
+                            int width,
+                            int inWidthStride,
+                            const cl_mem inData,
+                            int outWidthStride,
+                            cl_mem outData) {
+  inWidthStride *= sizeof(uchar);
+  outWidthStride *= sizeof(uchar);
+  RetCode code = transposeC4U8(inData, height, width, inWidthStride, outData,
+                               outWidthStride, queue);
+  return code;
+}
+
+template <>
+RetCode Transpose<float, 1>(cl_command_queue queue,
+                            int height,
+                            int width,
+                            int inWidthStride,
+                            const cl_mem inData,
+                            int outWidthStride,
+                            cl_mem outData) {
+  inWidthStride *= sizeof(float);
+  outWidthStride *= sizeof(float);
+  RetCode code = transposeC1F32(inData, height, width, inWidthStride, outData,
+                                outWidthStride, queue);
+  return code;
+}
+
+template <>
+RetCode Transpose<float, 3>(cl_command_queue queue,
+                            int height,
+                            int width,
+                            int inWidthStride,
+                            const cl_mem inData,
+                            int outWidthStride,
+                            cl_mem outData) {
+  inWidthStride *= sizeof(float);
+  outWidthStride *= sizeof(float);
+  RetCode code = transposeC3F32(inData, height, width, inWidthStride, outData,
+                                outWidthStride, queue);
+  return code;
+}
+
+template <>
+RetCode Transpose<float, 4>(cl_command_queue queue,
+                            int height,
+                            int width,
+                            int inWidthStride,
+                            const cl_mem inData,
+                            int outWidthStride,
+                            cl_mem outData) {
+  inWidthStride *= sizeof(float);
+  outWidthStride *= sizeof(float);
+  RetCode code = transposeC4F32(inData, height, width, inWidthStride, outData,
+                                outWidthStride, queue);
+  return code;
+}
+
+} // namespace ocl
+} // namespace cv
+} // namespace ppl

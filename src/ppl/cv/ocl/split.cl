@@ -14,119 +14,169 @@
  * under the License.
  */
 
-#if defined(SPLIT3_U81D) || defined(SPLIT3_F321D) || defined(ALL_KERNELS)
-#define SPLIT3KERNEL_TYPE0(base_type, T)                                   \
-  __kernel void split3##base_type##Kernel0(global const T* src, int cols,  \
-                                           global T* dst0, global T* dst1, \
-                                           global T* dst2) {               \
-    int element_x = get_global_id(0);                                      \
-    if (element_x >= cols) {                                           \
-      return;                                                              \
-    }                                                                      \
-                                                                           \
-    T##3 input_value;                                                      \
-    input_value = vload3(element_x, src);                                  \
-    dst0[element_x] = input_value.x;                                       \
-    dst1[element_x] = input_value.y;                                       \
-    dst2[element_x] = input_value.z;                                       \
-  }
-#endif
-
-#if defined(SPLIT3_U82D) || defined(SPLIT3_F322D) || defined(ALL_KERNELS)
-#define SPLIT3KERNEL_TYPE1(base_type, T)                                       \
-  __kernel void split3##base_type##Kernel1(                                    \
-      global const T* src, int rows, int cols, int src_stride, global T* dst0, \
-      global T* dst1, global T* dst2, int dst_stride) {                        \
-    int element_x = get_global_id(0);                                          \
-    int element_y = get_global_id(1);                                          \
-    if (element_x >= cols || element_y >= rows) {                          \
-      return;                                                                  \
-    }                                                                          \
-    T##3 input_value;                                                          \
-    input_value =                                                              \
-        vload3(element_x, (global T*)((uchar*)src + element_y * src_stride));  \
-    int offset = element_y * dst_stride;                                       \
-    dst0 = (global T*)((uchar*)dst0 + offset);                                 \
-    dst1 = (global T*)((uchar*)dst1 + offset);                                 \
-    dst2 = (global T*)((uchar*)dst2 + offset);                                 \
-    dst0[element_x] = input_value.x;                                           \
-    dst1[element_x] = input_value.y;                                           \
-    dst2[element_x] = input_value.z;                                           \
-  }
-#endif
-
-#if defined(SPLIT4_U81D) || defined(SPLIT4_F321D) || defined(ALL_KERNELS)
-#define SPLIT4KERNEL_TYPE0(base_type, T)                                     \
-  __kernel void split4##base_type##Kernel0(global const T* src, int cols,    \
-                                           global T* dst0, global T* dst1,   \
-                                           global T* dst2, global T* dst3) { \
-    int element_x = get_global_id(0);                                        \
-    if (element_x >= cols) {                                            \
-      return;                                                                \
-    }                                                                        \
-    T##4 input_value;                                                        \
-    input_value = vload4(element_x, src);                                    \
-    dst0[element_x] = input_value.x;                                         \
-    dst1[element_x] = input_value.y;                                         \
-    dst2[element_x] = input_value.z;                                         \
-    dst3[element_x] = input_value.w;                                         \
-  }
-#endif
-
-#if defined(SPLIT4_U82D) || defined(SPLIT4_F322D) || defined(ALL_KERNELS)
-#define SPLIT4KERNEL_TYPE1(base_type, T)                                       \
-  __kernel void split4##base_type##Kernel1(                                    \
-      global const T* src, int rows, int cols, int src_stride, global T* dst0, \
-      global T* dst1, global T* dst2, global T* dst3, int dst_stride) {        \
-    int element_x = get_global_id(0);                                          \
-    int element_y = get_global_id(1);                                          \
-    if (element_x >= cols || element_y >= rows) {                         \
-      return;                                                                  \
-    }                                                                          \
-                                                                               \
-    T##4 input_value;                                                          \
-    input_value =                                                              \
-        vload4(element_x, (global T*)((uchar*)src + element_y * src_stride));  \
-    int offset = element_y * dst_stride;                                       \
-    dst0 = (global T*)((uchar*)dst0 + offset);                                 \
-    dst1 = (global T*)((uchar*)dst1 + offset);                                 \
-    dst2 = (global T*)((uchar*)dst2 + offset);                                 \
-    dst3 = (global T*)((uchar*)dst3 + offset);                                 \
-    dst0[element_x] = input_value.x;                                           \
-    dst1[element_x] = input_value.y;                                           \
-    dst2[element_x] = input_value.z;                                           \
-    dst3[element_x] = input_value.w;                                           \
-  }
-#endif
 
 #if defined(SPLIT3_U81D) || defined(ALL_KERNELS)
-SPLIT3KERNEL_TYPE0(U8, uchar)
-#endif
-
-#if defined(SPLIT3_F321D) || defined(ALL_KERNELS)
-SPLIT3KERNEL_TYPE0(F32, float)
+__kernel
+void split3U8Kernel0(global const uchar* src, int cols, global uchar* dst0,
+                     global uchar* dst1, global uchar* dst2) {
+  int element_x = get_global_id(0);
+  if (element_x >= cols) {
+    return;
+  }
+  uchar3 input_value;
+  input_value = vload3(element_x, src);
+  dst0[element_x] = input_value.x;
+  dst1[element_x] = input_value.y;
+  dst2[element_x] = input_value.z;
+}
 #endif
 
 #if defined(SPLIT3_U82D) || defined(ALL_KERNELS)
-SPLIT3KERNEL_TYPE1(U8, uchar)
+__kernel
+void split3U8Kernel1(global const uchar* src, int rows, int cols,
+                     int src_stride, global uchar* dst0, global uchar* dst1,
+                     global uchar* dst2, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  if (element_x >= cols || element_y >= rows) {
+    return;
+  }
+  uchar3 input_value;
+  input_value =
+      vload3(element_x, (global uchar*)((uchar*)src + element_y * src_stride));
+  int offset = element_y * dst_stride;
+  dst0 = (global uchar*)((uchar*)dst0 + offset);
+  dst1 = (global uchar*)((uchar*)dst1 + offset);
+  dst2 = (global uchar*)((uchar*)dst2 + offset);
+  dst0[element_x] = input_value.x;
+  dst1[element_x] = input_value.y;
+  dst2[element_x] = input_value.z;
+}
 #endif
 
-#if defined(SPLIT3_F322D) || defined(ALL_KERNELS)
-SPLIT3KERNEL_TYPE1(F32, float)
-#endif
 
 #if defined(SPLIT4_U81D) || defined(ALL_KERNELS)
-SPLIT4KERNEL_TYPE0(U8, uchar)
-#endif
-
-#if defined(SPLIT4_F321D) || defined(ALL_KERNELS)
-SPLIT4KERNEL_TYPE0(F32, float)
+__kernel
+void split4U8Kernel0(global const uchar* src, int cols, global uchar* dst0,
+                     global uchar* dst1, global uchar* dst2,
+                     global uchar* dst3) {
+  int element_x = get_global_id(0);
+  if (element_x >= cols) {
+    return;
+  }
+  uchar4 input_value;
+  input_value = vload4(element_x, src);
+  dst0[element_x] = input_value.x;
+  dst1[element_x] = input_value.y;
+  dst2[element_x] = input_value.z;
+  dst3[element_x] = input_value.w;
+}
 #endif
 
 #if defined(SPLIT4_U82D) || defined(ALL_KERNELS)
-SPLIT4KERNEL_TYPE1(U8, uchar)
+__kernel
+void split4U8Kernel1(global const uchar* src, int rows, int cols,
+                     int src_stride, global uchar* dst0, global uchar* dst1,
+                     global uchar* dst2, global uchar* dst3, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  if (element_x >= cols || element_y >= rows) {
+    return;
+  }
+  uchar4 input_value;
+  input_value =
+      vload4(element_x, (global uchar*)((uchar*)src + element_y * src_stride));
+  int offset = element_y * dst_stride;
+  dst0 = (global uchar*)((uchar*)dst0 + offset);
+  dst1 = (global uchar*)((uchar*)dst1 + offset);
+  dst2 = (global uchar*)((uchar*)dst2 + offset);
+  dst3 = (global uchar*)((uchar*)dst3 + offset);
+  dst0[element_x] = input_value.x;
+  dst1[element_x] = input_value.y;
+  dst2[element_x] = input_value.z;
+  dst3[element_x] = input_value.w;
+}
+#endif
+
+#if defined(SPLIT3_F321D) || defined(ALL_KERNELS)
+__kernel
+void split3F32Kernel0(global const float* src, int cols, global float* dst0,
+                      global float* dst1, global float* dst2) {
+  int element_x = get_global_id(0);
+  if (element_x >= cols) {
+    return;
+  }
+  float3 input_value;
+  input_value = vload3(element_x, src);
+  dst0[element_x] = input_value.x;
+  dst1[element_x] = input_value.y;
+  dst2[element_x] = input_value.z;
+}
+#endif
+
+#if defined(SPLIT3_F322D) || defined(ALL_KERNELS)
+__kernel
+void split3F32Kernel1(global const float* src, int rows, int cols,
+                      int src_stride, global float* dst0, global float* dst1,
+                      global float* dst2, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  if (element_x >= cols || element_y >= rows) {
+    return;
+  }
+  float3 input_value;
+  input_value =
+      vload3(element_x, (global float*)((uchar*)src + element_y * src_stride));
+  int offset = element_y * dst_stride;
+  dst0 = (global float*)((uchar*)dst0 + offset);
+  dst1 = (global float*)((uchar*)dst1 + offset);
+  dst2 = (global float*)((uchar*)dst2 + offset);
+  dst0[element_x] = input_value.x;
+  dst1[element_x] = input_value.y;
+  dst2[element_x] = input_value.z;
+}
+#endif
+
+
+#if defined(SPLIT4_F321D) || defined(ALL_KERNELS)
+__kernel
+void split4F32Kernel0(global const float* src, int cols, global float* dst0,
+                      global float* dst1, global float* dst2,
+                      global float* dst3) {
+  int element_x = get_global_id(0);
+  if (element_x >= cols) {
+    return;
+  }
+  float4 input_value;
+  input_value = vload4(element_x, src);
+  dst0[element_x] = input_value.x;
+  dst1[element_x] = input_value.y;
+  dst2[element_x] = input_value.z;
+  dst3[element_x] = input_value.w;
+}
 #endif
 
 #if defined(SPLIT4_F322D) || defined(ALL_KERNELS)
-SPLIT4KERNEL_TYPE1(F32, float)
+__kernel
+void split4F32Kernel1(global const float* src, int rows, int cols,
+                      int src_stride, global float* dst0, global float* dst1,
+                      global float* dst2, global float* dst3, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  if (element_x >= cols || element_y >= rows) {
+    return;
+  }
+  float4 input_value;
+  input_value =
+      vload4(element_x, (global float*)((uchar*)src + element_y * src_stride));
+  int offset = element_y * dst_stride;
+  dst0 = (global float*)((uchar*)dst0 + offset);
+  dst1 = (global float*)((uchar*)dst1 + offset);
+  dst2 = (global float*)((uchar*)dst2 + offset);
+  dst3 = (global float*)((uchar*)dst3 + offset);
+  dst0[element_x] = input_value.x;
+  dst1[element_x] = input_value.y;
+  dst2[element_x] = input_value.z;
+  dst3[element_x] = input_value.w;
+}
 #endif

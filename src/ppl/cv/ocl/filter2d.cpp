@@ -29,106 +29,364 @@ namespace ppl {
 namespace cv {
 namespace ocl {
 
-#define RUN_KERNEL(interpolate, base_type)                                           \
-  {                                                                                  \
-    if (channels == 1){                                                              \
-      frame_chain->setCompileOptions("-D SEPFILTER2D_" #base_type "1C");             \
-      runOclKernel(frame_chain,                                                      \
-                  "filter2D" #base_type "C1" #interpolate "Kernel",                  \
-                  2, global_size, local_size, src, rows, cols, src_stride, kernel,   \
-                  radius, dst, dst_stride, delta);                                   \
-    }                                                                                \
-    else{                                                                            \
-      if (channels == 3){                                                            \
-        frame_chain->setCompileOptions("-D SEPFILTER2D_" #base_type "1C");           \
-        runOclKernel(frame_chain,                                                    \
-                    "filter2D" #base_type "C3" #interpolate "Kernel",                \
-                    2, global_size, local_size, src, rows, cols, src_stride, kernel, \
-                    radius, dst, dst_stride, delta);                                 \
-      }                                                                              \
-      else {                                                                         \
-        frame_chain->setCompileOptions("-D SEPFILTER2D_" #base_type "1C");           \
-        runOclKernel(frame_chain,                                                    \
-                    "filter2D" #base_type "C4" #interpolate "Kernel",                \
-                    2, global_size, local_size, src, rows, cols, src_stride, kernel, \
-                    radius, dst, dst_stride, delta);                                 \
-      }                                                                              \
-    }                                                                                \
+
+RetCode filter2DU8(const cl_mem src, int rows, int cols, int channels,
+                   int src_stride, const cl_mem kernel, int ksize, cl_mem dst,
+                   int dst_stride, float delta, BorderType border_type,
+                   cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(kernel != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(rows >= 1 && cols >= 1);
+  PPL_ASSERT(channels == 1 || channels == 3 || channels == 4);
+  PPL_ASSERT(src_stride >= cols * channels * (int)sizeof(uchar));
+  PPL_ASSERT(dst_stride >= cols * channels * (int)sizeof(uchar));
+  PPL_ASSERT(ksize > 0);
+  PPL_ASSERT((ksize & 1) == 1);
+  PPL_ASSERT(border_type == BORDER_REPLICATE || border_type == BORDER_REFLECT ||
+             border_type == BORDER_REFLECT_101);
+  int radius = ksize >> 1;
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, filter2d);
+  int global_cols;
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  if (channels == 1)
+    global_cols = divideUp(cols, 4, 2);
+  else
+    global_cols = cols;
+  size_t global_size[] = {(size_t)global_cols, (size_t)rows};
+  ksize = ksize >> 1;
+  if (border_type == BORDER_REPLICATE) {
+    {
+      if (channels == 1) {
+        frame_chain->setCompileOptions(
+            "-D FILTER2D_interpolateReplicateBorderC1U8");
+        runOclKernel(frame_chain,
+                     "filter2DU8C1interpolateReplicateBorderKernel", 2,
+                     global_size, local_size, src, rows, cols, src_stride,
+                     kernel, radius, dst, dst_stride, delta);
+      }
+      else {
+        if (channels == 3) {
+          frame_chain->setCompileOptions(
+              "-D FILTER2D_interpolateReplicateBorderC3U8");
+          runOclKernel(frame_chain,
+                       "filter2DU8C3interpolateReplicateBorderKernel", 2,
+                       global_size, local_size, src, rows, cols, src_stride,
+                       kernel, radius, dst, dst_stride, delta);
+        }
+        else {
+          frame_chain->setCompileOptions(
+              "-D FILTER2D_interpolateReplicateBorderC4U8");
+          runOclKernel(frame_chain,
+                       "filter2DU8C4interpolateReplicateBorderKernel", 2,
+                       global_size, local_size, src, rows, cols, src_stride,
+                       kernel, radius, dst, dst_stride, delta);
+        }
+      }
+    }
   }
-
-#define FILTER2D_TYPE(base_type, T)                                                \
-  RetCode filter2D##base_type(                                                     \
-    const cl_mem src, int rows, int cols, int channels,                            \
-    int src_stride, const cl_mem kernel, int ksize, cl_mem dst,                    \
-    int dst_stride, float delta, BorderType border_type, cl_command_queue queue) { \
-    PPL_ASSERT(src != nullptr);                                                    \
-    PPL_ASSERT(kernel != nullptr);                                                 \
-    PPL_ASSERT(dst != nullptr);                                                    \
-    PPL_ASSERT(rows >= 1 && cols >= 1);                                            \
-    PPL_ASSERT(channels == 1 || channels == 3 || channels == 4);                   \
-    PPL_ASSERT(src_stride >= cols * channels * (int)sizeof(T));                \
-    PPL_ASSERT(dst_stride >= cols * channels * (int)sizeof(T));                \
-    PPL_ASSERT(ksize > 0);                                                         \
-    PPL_ASSERT((ksize & 1) == 1);                                                  \
-    PPL_ASSERT(border_type == BORDER_REPLICATE ||                                  \
-              border_type == BORDER_REFLECT ||                                     \
-              border_type == BORDER_REFLECT_101);                                  \
-  int radius = ksize >> 1;                                                         \
-                                                                                   \
-    FrameChain* frame_chain = getSharedFrameChain();                               \
-    frame_chain->setProjectName("cv");                                             \
-    SET_PROGRAM_SOURCE(frame_chain, filter2d);                                     \
-                                                                                   \
-    int global_cols;                                                  \
-    size_t local_size[] = {kBlockDimX0, kBlockDimY0};                              \
-                                                                                   \
-    if (channels == 1)                                                             \
-      global_cols = divideUp(cols, 4, 2);                                          \
-    else                                                                           \
-      global_cols = cols;                                                          \
-    size_t global_size[] = {(size_t)global_cols, (size_t)rows};                    \
-    ksize = ksize >> 1;                                                            \
-                                                                                   \
-    if (border_type == BORDER_REPLICATE) {                                         \
-      RUN_KERNEL(interpolateReplicateBorder, base_type)                            \
-    } else if (border_type == BORDER_REFLECT) {                                    \
-      RUN_KERNEL(interpolateReflectBorder, base_type)                              \
-    } else if (border_type == BORDER_REFLECT_101) {                                \
-      RUN_KERNEL(interpolateReflect101Border, base_type)                           \
-    }                                                                              \
-                                                                                   \
-    return RC_SUCCESS;                                                             \
+  else if (border_type == BORDER_REFLECT) {
+    {
+      if (channels == 1) {
+        frame_chain->setCompileOptions(
+            "-D FILTER2D_interpolateReflectBorderC1U8");
+        runOclKernel(frame_chain, "filter2DU8C1interpolateReflectBorderKernel",
+                     2, global_size, local_size, src, rows, cols, src_stride,
+                     kernel, radius, dst, dst_stride, delta);
+      }
+      else {
+        if (channels == 3) {
+          frame_chain->setCompileOptions(
+              "-D FILTER2D_interpolateReflectBorderC3U8");
+          runOclKernel(frame_chain,
+                       "filter2DU8C3interpolateReflectBorderKernel", 2,
+                       global_size, local_size, src, rows, cols, src_stride,
+                       kernel, radius, dst, dst_stride, delta);
+        }
+        else {
+          frame_chain->setCompileOptions(
+              "-D FILTER2D_interpolateReflectBorderC4U8");
+          runOclKernel(frame_chain,
+                       "filter2DU8C4interpolateReflectBorderKernel", 2,
+                       global_size, local_size, src, rows, cols, src_stride,
+                       kernel, radius, dst, dst_stride, delta);
+        }
+      }
+    }
   }
-
-FILTER2D_TYPE(U8, uchar)
-FILTER2D_TYPE(F32, float)
-
-#define FILTER2D_TYPE_TEMPLATE(base_type, T, channels)                          \
-  template <>                                                                  \
-  RetCode Filter2D<T, channels>(                                                \
-      cl_command_queue queue, int height, int width,                           \
-      int inWidthStride, const cl_mem inData, int ksize, const cl_mem kernel,  \
-      int outWidthStride, cl_mem outData, float delta,                         \
-      BorderType border_type) {                                                \
-    inWidthStride *= sizeof(T);                                                \
-    outWidthStride *= sizeof(T);                                               \
-    RetCode code = filter2D##base_type(                                        \
-        inData, height, width, channels, inWidthStride, kernel, ksize,         \
-        outData, outWidthStride, delta, border_type, queue);                   \
-                                                                               \
-    return code;                                                               \
+  else if (border_type == BORDER_REFLECT_101) {
+    {
+      if (channels == 1) {
+        frame_chain->setCompileOptions(
+            "-D FILTER2D_interpolateReflect101BorderC1U8");
+        runOclKernel(frame_chain,
+                     "filter2DU8C1interpolateReflect101BorderKernel", 2,
+                     global_size, local_size, src, rows, cols, src_stride,
+                     kernel, radius, dst, dst_stride, delta);
+      }
+      else {
+        if (channels == 3) {
+          frame_chain->setCompileOptions(
+              "-D FILTER2D_interpolateReflect101BorderC3U8");
+          runOclKernel(frame_chain,
+                       "filter2DU8C3interpolateReflect101BorderKernel", 2,
+                       global_size, local_size, src, rows, cols, src_stride,
+                       kernel, radius, dst, dst_stride, delta);
+        }
+        else {
+          frame_chain->setCompileOptions(
+              "-D FILTER2D_interpolateReflect101BorderC4U8");
+          runOclKernel(frame_chain,
+                       "filter2DU8C4interpolateReflect101BorderKernel", 2,
+                       global_size, local_size, src, rows, cols, src_stride,
+                       kernel, radius, dst, dst_stride, delta);
+        }
+      }
+    }
   }
+  return RC_SUCCESS;
+}
 
-FILTER2D_TYPE_TEMPLATE(U8, uchar, 1)
-FILTER2D_TYPE_TEMPLATE(U8, uchar, 3)
-FILTER2D_TYPE_TEMPLATE(U8, uchar, 4)
-FILTER2D_TYPE_TEMPLATE(F32, float, 1)
-FILTER2D_TYPE_TEMPLATE(F32, float, 3)
-FILTER2D_TYPE_TEMPLATE(F32, float, 4)
+RetCode filter2DF32(const cl_mem src, int rows, int cols, int channels,
+                    int src_stride, const cl_mem kernel, int ksize, cl_mem dst,
+                    int dst_stride, float delta, BorderType border_type,
+                    cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(kernel != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(rows >= 1 && cols >= 1);
+  PPL_ASSERT(channels == 1 || channels == 3 || channels == 4);
+  PPL_ASSERT(src_stride >= cols * channels * (int)sizeof(float));
+  PPL_ASSERT(dst_stride >= cols * channels * (int)sizeof(float));
+  PPL_ASSERT(ksize > 0);
+  PPL_ASSERT((ksize & 1) == 1);
+  PPL_ASSERT(border_type == BORDER_REPLICATE || border_type == BORDER_REFLECT ||
+             border_type == BORDER_REFLECT_101);
+  int radius = ksize >> 1;
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, filter2d);
+  int global_cols;
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  if (channels == 1)
+    global_cols = divideUp(cols, 4, 2);
+  else
+    global_cols = cols;
+  size_t global_size[] = {(size_t)global_cols, (size_t)rows};
+  ksize = ksize >> 1;
+  if (border_type == BORDER_REPLICATE) {
+    {
+      if (channels == 1) {
+        frame_chain->setCompileOptions(
+            "-D FILTER2D_interpolateReplicateBorderC1F32");
+        runOclKernel(frame_chain,
+                     "filter2DF32C1interpolateReplicateBorderKernel", 2,
+                     global_size, local_size, src, rows, cols, src_stride,
+                     kernel, radius, dst, dst_stride, delta);
+      }
+      else {
+        if (channels == 3) {
+          frame_chain->setCompileOptions(
+              "-D FILTER2D_interpolateReplicateBorderC3F32");
+          runOclKernel(frame_chain,
+                       "filter2DF32C3interpolateReplicateBorderKernel", 2,
+                       global_size, local_size, src, rows, cols, src_stride,
+                       kernel, radius, dst, dst_stride, delta);
+        }
+        else {
+          frame_chain->setCompileOptions(
+              "-D FILTER2D_interpolateReplicateBorderC4F32");
+          runOclKernel(frame_chain,
+                       "filter2DF32C4interpolateReplicateBorderKernel", 2,
+                       global_size, local_size, src, rows, cols, src_stride,
+                       kernel, radius, dst, dst_stride, delta);
+        }
+      }
+    }
+  }
+  else if (border_type == BORDER_REFLECT) {
+    {
+      if (channels == 1) {
+        frame_chain->setCompileOptions(
+            "-D FILTER2D_interpolateReflectBorderC1F32");
+        runOclKernel(frame_chain, "filter2DF32C1interpolateReflectBorderKernel",
+                     2, global_size, local_size, src, rows, cols, src_stride,
+                     kernel, radius, dst, dst_stride, delta);
+      }
+      else {
+        if (channels == 3) {
+          frame_chain->setCompileOptions(
+              "-D FILTER2D_interpolateReflectBorderC3F32");
+          runOclKernel(frame_chain,
+                       "filter2DF32C3interpolateReflectBorderKernel", 2,
+                       global_size, local_size, src, rows, cols, src_stride,
+                       kernel, radius, dst, dst_stride, delta);
+        }
+        else {
+          frame_chain->setCompileOptions(
+              "-D FILTER2D_interpolateReflectBorderC4F32");
+          runOclKernel(frame_chain,
+                       "filter2DF32C4interpolateReflectBorderKernel", 2,
+                       global_size, local_size, src, rows, cols, src_stride,
+                       kernel, radius, dst, dst_stride, delta);
+        }
+      }
+    }
+  }
+  else if (border_type == BORDER_REFLECT_101) {
+    {
+      if (channels == 1) {
+        frame_chain->setCompileOptions(
+            "-D FILTER2D_interpolateReflect101BorderC1F32");
+        runOclKernel(frame_chain,
+                     "filter2DF32C1interpolateReflect101BorderKernel", 2,
+                     global_size, local_size, src, rows, cols, src_stride,
+                     kernel, radius, dst, dst_stride, delta);
+      }
+      else {
+        if (channels == 3) {
+          frame_chain->setCompileOptions(
+              "-D FILTER2D_interpolateReflect101BorderC3F32");
+          runOclKernel(frame_chain,
+                       "filter2DF32C3interpolateReflect101BorderKernel", 2,
+                       global_size, local_size, src, rows, cols, src_stride,
+                       kernel, radius, dst, dst_stride, delta);
+        }
+        else {
+          frame_chain->setCompileOptions(
+              "-D FILTER2D_interpolateReflect101BorderC4F32");
+          runOclKernel(frame_chain,
+                       "filter2DF32C4interpolateReflect101BorderKernel", 2,
+                       global_size, local_size, src, rows, cols, src_stride,
+                       kernel, radius, dst, dst_stride, delta);
+        }
+      }
+    }
+  }
+  return RC_SUCCESS;
+}
 
-// SEPFILTER2D_TYPE_CN_TEMPLATE(F32, float, 3)
-// SEPFILTER2D_TYPE_CN_TEMPLATE(F32, float, 4)
+template <>
+RetCode Filter2D<uchar, 1>(cl_command_queue queue,
+                           int height,
+                           int width,
+                           int inWidthStride,
+                           const cl_mem inData,
+                           int ksize,
+                           const cl_mem kernel,
+                           int outWidthStride,
+                           cl_mem outData,
+                           float delta,
+                           BorderType border_type) {
+  inWidthStride *= sizeof(uchar);
+  outWidthStride *= sizeof(uchar);
+  RetCode code =
+      filter2DU8(inData, height, width, 1, inWidthStride, kernel, ksize,
+                 outData, outWidthStride, delta, border_type, queue);
+  return code;
+}
 
+template <>
+RetCode Filter2D<uchar, 3>(cl_command_queue queue,
+                           int height,
+                           int width,
+                           int inWidthStride,
+                           const cl_mem inData,
+                           int ksize,
+                           const cl_mem kernel,
+                           int outWidthStride,
+                           cl_mem outData,
+                           float delta,
+                           BorderType border_type) {
+  inWidthStride *= sizeof(uchar);
+  outWidthStride *= sizeof(uchar);
+  RetCode code =
+      filter2DU8(inData, height, width, 3, inWidthStride, kernel, ksize,
+                 outData, outWidthStride, delta, border_type, queue);
+  return code;
+}
+
+template <>
+RetCode Filter2D<uchar, 4>(cl_command_queue queue,
+                           int height,
+                           int width,
+                           int inWidthStride,
+                           const cl_mem inData,
+                           int ksize,
+                           const cl_mem kernel,
+                           int outWidthStride,
+                           cl_mem outData,
+                           float delta,
+                           BorderType border_type) {
+  inWidthStride *= sizeof(uchar);
+  outWidthStride *= sizeof(uchar);
+  RetCode code =
+      filter2DU8(inData, height, width, 4, inWidthStride, kernel, ksize,
+                 outData, outWidthStride, delta, border_type, queue);
+  return code;
+}
+
+template <>
+RetCode Filter2D<float, 1>(cl_command_queue queue,
+                           int height,
+                           int width,
+                           int inWidthStride,
+                           const cl_mem inData,
+                           int ksize,
+                           const cl_mem kernel,
+                           int outWidthStride,
+                           cl_mem outData,
+                           float delta,
+                           BorderType border_type) {
+  inWidthStride *= sizeof(float);
+  outWidthStride *= sizeof(float);
+  RetCode code =
+      filter2DF32(inData, height, width, 1, inWidthStride, kernel, ksize,
+                  outData, outWidthStride, delta, border_type, queue);
+  return code;
+}
+
+template <>
+RetCode Filter2D<float, 3>(cl_command_queue queue,
+                           int height,
+                           int width,
+                           int inWidthStride,
+                           const cl_mem inData,
+                           int ksize,
+                           const cl_mem kernel,
+                           int outWidthStride,
+                           cl_mem outData,
+                           float delta,
+                           BorderType border_type) {
+  inWidthStride *= sizeof(float);
+  outWidthStride *= sizeof(float);
+  RetCode code =
+      filter2DF32(inData, height, width, 3, inWidthStride, kernel, ksize,
+                  outData, outWidthStride, delta, border_type, queue);
+  return code;
+}
+
+template <>
+RetCode Filter2D<float, 4>(cl_command_queue queue,
+                           int height,
+                           int width,
+                           int inWidthStride,
+                           const cl_mem inData,
+                           int ksize,
+                           const cl_mem kernel,
+                           int outWidthStride,
+                           cl_mem outData,
+                           float delta,
+                           BorderType border_type) {
+  inWidthStride *= sizeof(float);
+  outWidthStride *= sizeof(float);
+  RetCode code =
+      filter2DF32(inData, height, width, 4, inWidthStride, kernel, ksize,
+                  outData, outWidthStride, delta, border_type, queue);
+  return code;
+}
 
 }  // namespace ocl
 }  // namespace cv

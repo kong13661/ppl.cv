@@ -40,225 +40,907 @@ namespace ppl {
 namespace cv {
 namespace ocl {
 
-#define RUN_KERNEL(interpolate, base_type_src, base_type_dst)                  \
-  {                                                                            \
-    global_cols = divideUp(cols, F32##DIV, F32##OFFSET);                       \
-    global_rows = divideUp(rows, F32##DIV, F32##OFFSET);                       \
-    global_size[0] = (size_t)global_cols;                                      \
-    global_size[1] = (size_t)global_rows;                                      \
-    frame_chain->setCompileOptions("-D " #interpolate "_SEP_C1");     \
-    cl_mem buffer;                                                                         \
-    GpuMemoryBlock buffer_block;                                                           \
-    buffer_block.offset = 0;\
-    if (memoryPoolUsed()) {                                                                \
-      pplOclMalloc(buffer_block, rows * (int)sizeof(float) *                               \
-                   cols);                                          \
-      buffer = buffer_block.data;                                                          \
-    }                                                                                      \
-    else {                                                                                 \
-      cl_int error_code = 0;                                                               \
-      buffer = clCreateBuffer(                                                             \
-          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,            \
-          rows * (int)sizeof(float) * cols,                                                \
-          NULL, &error_code);                                                              \
-      CHECK_ERROR(error_code, clCreateBuffer);                                             \
-    }                                                                                      \
-    runOclKernel(frame_chain,                                                  \
-                 "sepfilter2d" #base_type_src "F32" #interpolate "C1Kernel",   \
-                 2, global_size, local_size, src, 0, rows, cols, kernel_x, ksize, \
-                 src_stride, buffer, rows*(int)sizeof(float), is_symmetric,    \
-                 0.f, (int)buffer_block.offset);                                                       \
-                                                                               \
-    global_cols = divideUp(cols, base_type_dst##DIV, base_type_dst##OFFSET);   \
-    global_rows = divideUp(rows, base_type_dst##DIV, base_type_dst##OFFSET);   \
-    global_size[0] = (size_t)global_rows;                                      \
-    global_size[1] = (size_t)global_cols;                                      \
-    runOclKernel(frame_chain,                                                  \
-                 "sepfilter2d"                                                 \
-                 "F32" #base_type_dst #interpolate "C1Kernel",                 \
-                 2, global_size, local_size, buffer, (int)buffer_block.offset, cols, rows, kernel_y,     \
-                 ksize, rows*(int)sizeof(float), dst, dst_stride,              \
-                 is_symmetric, delta, 0);                                         \
-    if (memoryPoolUsed()) {                                                     \
-      pplOclFree(buffer_block);                                                 \
-    }                                                                           \
-    else {                                                                      \
-      clReleaseMemObject(buffer);                                               \
-    }                                                                           \
+RetCode sepfilter2dC1U8(const cl_mem src, int rows, int cols, int src_stride,
+                        const cl_mem kernel_x, const cl_mem kernel_y, int ksize,
+                        cl_mem dst, int dst_stride, float delta,
+                        BorderType border_type, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(rows >= 1 && cols >= 1);
+  PPL_ASSERT(src_stride >= cols * (int)sizeof(uchar));
+  PPL_ASSERT(dst_stride >= cols * (int)sizeof(uchar));
+  PPL_ASSERT(border_type == BORDER_REPLICATE || border_type == BORDER_REFLECT ||
+             border_type == BORDER_REFLECT_101)
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, sepfilter2d);
+  int global_cols, global_rows;
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[2];
+  int is_symmetric = ksize & 1;
+  ksize = ksize >> 1;
+  if (border_type == BORDER_REPLICATE) {
+    global_cols = divideUp(cols, 2, 1);
+    global_rows = divideUp(rows, 2, 1);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D SEPFILTER2DinterpolateReplicateBorderU8C1");
+    cl_mem buffer;
+    GpuMemoryBlock buffer_block;
+    buffer_block.offset = 0;
+    if (memoryPoolUsed()) {
+      pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols);
+      buffer = buffer_block.data;
+    }
+    else {
+      cl_int error_code = 0;
+      buffer = clCreateBuffer(
+          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+          rows * (int)sizeof(float) * cols, NULL, &error_code);
+      CHECK_ERROR(error_code, clCreateBuffer);
+    }
+    runOclKernel(frame_chain,
+                 "sepfilter2dU8F32interpolateReplicateBorderC1Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, kernel_x, ksize,
+                 src_stride, buffer, rows * (int)sizeof(float), is_symmetric,
+                 0.f, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 4, 2);
+    global_rows = divideUp(rows, 4, 2);
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32U8interpolateReplicateBorderC1Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, kernel_y, ksize, rows * (int)sizeof(float), dst,
+                 dst_stride, is_symmetric, delta, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
   }
-
-#define SEPFILTER2D_C1_TYPE(base_type_src, Tsrc, base_type_dst, Tdst)          \
-  RetCode sepfilter2dC1##base_type_src##base_type_dst(                         \
-      const cl_mem src, int rows, int cols, int src_stride,                    \
-      const cl_mem kernel_x, const cl_mem kernel_y, int ksize, cl_mem dst,     \
-      int dst_stride, float delta, BorderType border_type, \
-      cl_command_queue queue) {                                                \
-    PPL_ASSERT(src != nullptr);                                                \
-    PPL_ASSERT(dst != nullptr);                                                \
-    PPL_ASSERT(rows >= 1 && cols >= 1);                                        \
-    PPL_ASSERT(src_stride >= cols * (int)sizeof(Tsrc));                        \
-    PPL_ASSERT(dst_stride >= cols * (int)sizeof(Tdst));                        \
-    PPL_ASSERT(border_type == BORDER_REPLICATE ||                              \
-               border_type == BORDER_REFLECT ||                                \
-               border_type == BORDER_REFLECT_101)                              \
-    FrameChain* frame_chain = getSharedFrameChain();                           \
-    frame_chain->setProjectName("cv");                                         \
-    SET_PROGRAM_SOURCE(frame_chain, sepfilter2d);                              \
-    \
-    int global_cols, global_rows;                                              \
-    size_t local_size[] = {kBlockDimX0, kBlockDimY0};                          \
-    size_t global_size[2];                                                     \
-    int is_symmetric = ksize & 1;                                             \
-    ksize = ksize >> 1;                                                        \
-                                                                               \
-    if (border_type == BORDER_REPLICATE)                                       \
-      RUN_KERNEL(interpolateReplicateBorder, base_type_src, base_type_dst)     \
-    else if (border_type == BORDER_REFLECT)                                    \
-      RUN_KERNEL(interpolateReflectBorder, base_type_src, base_type_dst)       \
-    else if (border_type == BORDER_REFLECT_101)                                \
-      RUN_KERNEL(interpolateReflect101Border, base_type_src, base_type_dst)    \
-    return RC_SUCCESS;                                                         \
+  else if (border_type == BORDER_REFLECT) {
+    global_cols = divideUp(cols, 2, 1);
+    global_rows = divideUp(rows, 2, 1);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D SEPFILTER2DinterpolateReflectBorderU8C1");
+    cl_mem buffer;
+    GpuMemoryBlock buffer_block;
+    buffer_block.offset = 0;
+    if (memoryPoolUsed()) {
+      pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols);
+      buffer = buffer_block.data;
+    }
+    else {
+      cl_int error_code = 0;
+      buffer = clCreateBuffer(
+          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+          rows * (int)sizeof(float) * cols, NULL, &error_code);
+      CHECK_ERROR(error_code, clCreateBuffer);
+    }
+    runOclKernel(frame_chain,
+                 "sepfilter2dU8F32interpolateReflectBorderC1Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, kernel_x, ksize,
+                 src_stride, buffer, rows * (int)sizeof(float), is_symmetric,
+                 0.f, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 4, 2);
+    global_rows = divideUp(rows, 4, 2);
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32U8interpolateReflectBorderC1Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, kernel_y, ksize, rows * (int)sizeof(float), dst,
+                 dst_stride, is_symmetric, delta, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
   }
-
-#define RUN_KERNEL_CN(interpolate, base_type_src, base_type_dst, channels)     \
-  {                                                                            \
-    global_cols = cols;                                                        \
-    global_rows = divideUp(rows, F32##DIV_CN, F32##OFFSET_CN);                 \
-    global_size[0] = (size_t)global_cols;                                      \
-    global_size[1] = (size_t)global_rows;                                      \
-    frame_chain->setCompileOptions("-D " #interpolate "_SEP_C"            \
-                                   #channels);                             \
-    runOclKernel(frame_chain,                                                  \
-                 "sepfilter2d" #base_type_src "F32" #interpolate "C" #channels \
-                 "Kernel",                                                     \
-                 2, global_size, local_size, src, 0, rows, cols, kernel_x, ksize, \
-                 src_stride, buffer, rows*(int)sizeof(float) * channels, is_symmetric,    \
-                 0.f, (int)buffer_block.offset);                                                         \
-                                                                               \
-    global_cols =                                                              \
-        divideUp(cols, base_type_dst##DIV_CN, base_type_dst##OFFSET_CN);       \
-    global_rows = rows;                                                        \
-    global_size[0] = (size_t)global_rows;                                      \
-    global_size[1] = (size_t)global_cols;                                      \
-    runOclKernel(frame_chain,                                                  \
-                 "sepfilter2d"                                                 \
-                 "F32" #base_type_dst #interpolate "C" #channels "Kernel",     \
-                 2, global_size, local_size, buffer, (int)buffer_block.offset, cols, rows, kernel_y,     \
-                 ksize, rows*(int)sizeof(float) * channels, dst, dst_stride,              \
-                 is_symmetric, delta, 0);                                         \
-    if (memoryPoolUsed()) {                                                     \
-      pplOclFree(buffer_block);                                                 \
-    }                                                                           \
-    else {                                                                      \
-      clReleaseMemObject(buffer);                                               \
-    }                                                                           \
+  else if (border_type == BORDER_REFLECT_101) {
+    global_cols = divideUp(cols, 2, 1);
+    global_rows = divideUp(rows, 2, 1);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D SEPFILTER2DinterpolateReflect101BorderU8C1");
+    cl_mem buffer;
+    GpuMemoryBlock buffer_block;
+    buffer_block.offset = 0;
+    if (memoryPoolUsed()) {
+      pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols);
+      buffer = buffer_block.data;
+    }
+    else {
+      cl_int error_code = 0;
+      buffer = clCreateBuffer(
+          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+          rows * (int)sizeof(float) * cols, NULL, &error_code);
+      CHECK_ERROR(error_code, clCreateBuffer);
+    }
+    runOclKernel(frame_chain,
+                 "sepfilter2dU8F32interpolateReflect101BorderC1Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, kernel_x, ksize,
+                 src_stride, buffer, rows * (int)sizeof(float), is_symmetric,
+                 0.f, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 4, 2);
+    global_rows = divideUp(rows, 4, 2);
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32U8interpolateReflect101BorderC1Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, kernel_y, ksize, rows * (int)sizeof(float), dst,
+                 dst_stride, is_symmetric, delta, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
   }
+  return RC_SUCCESS;
+}
 
-#define SEPFILTER2D_CN_TYPE(base_type_src, Tsrc, base_type_dst, Tdst,          \
-                            channels)                                          \
-  RetCode sepfilter2dC##channels##base_type_src##base_type_dst(                \
-      const cl_mem src, int rows, int cols, int src_stride,                    \
-      const cl_mem kernel_x, const cl_mem kernel_y, int ksize, cl_mem dst,     \
-      int dst_stride, float delta, BorderType border_type, \
-      cl_command_queue queue) {                                                \
-    PPL_ASSERT(src != nullptr);                                                \
-    PPL_ASSERT(dst != nullptr);                                                \
-    PPL_ASSERT(rows >= 1 && cols >= 1);                                        \
-    PPL_ASSERT(src_stride >= cols * (int)sizeof(Tsrc) * channels);             \
-    PPL_ASSERT(dst_stride >= cols * (int)sizeof(Tdst) * channels);             \
-    PPL_ASSERT(border_type == BORDER_REPLICATE ||                              \
-               border_type == BORDER_REFLECT ||                                \
-               border_type == BORDER_REFLECT_101)                              \
-    FrameChain* frame_chain = getSharedFrameChain();                           \
-    frame_chain->setProjectName("cv");                                         \
-    SET_PROGRAM_SOURCE(frame_chain, sepfilter2d);                              \
-                                                                               \
-    int global_cols, global_rows;                                              \
-    size_t local_size[] = {kBlockDimX0, kBlockDimY0};                          \
-    size_t global_size[2];                                                     \
-    int is_symmetric = ksize & 1;                                              \
-    ksize = ksize >> 1;                                                        \
-\
-    cl_mem buffer;                                                                    \
-    GpuMemoryBlock buffer_block;                                                      \
-    buffer_block.offset = 0;\
-    if (memoryPoolUsed()) {                                                           \
-      pplOclMalloc(buffer_block, rows * (int)sizeof(float) *                          \
-                   cols * channels);                                     \
-      buffer = buffer_block.data;                                                     \
-    }                                                                                 \
-    else {                                                                            \
-      cl_int error_code = 0;                                                          \
-      buffer = clCreateBuffer(                                                        \
-          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,       \
-          rows * (int)sizeof(float) * cols * channels,           \
-          NULL, &error_code);                                                         \
-      CHECK_ERROR(error_code, clCreateBuffer);                                        \
-    }                                                                                 \
-                                                                               \
-    if (border_type == BORDER_REPLICATE)                                       \
-      RUN_KERNEL_CN(interpolateReplicateBorder, base_type_src, base_type_dst,  \
-                    channels)                                                  \
-    else if (border_type == BORDER_REFLECT)                                    \
-      RUN_KERNEL_CN(interpolateReflectBorder, base_type_src, base_type_dst,    \
-                    channels)                                                  \
-    else if (border_type == BORDER_REFLECT_101)                                \
-      RUN_KERNEL_CN(interpolateReflect101Border, base_type_src, base_type_dst, \
-                    channels)                                                  \
-    return RC_SUCCESS;                                                         \
+RetCode sepfilter2dC3U8(const cl_mem src, int rows, int cols, int src_stride,
+                        const cl_mem kernel_x, const cl_mem kernel_y, int ksize,
+                        cl_mem dst, int dst_stride, float delta,
+                        BorderType border_type, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(rows >= 1 && cols >= 1);
+  PPL_ASSERT(src_stride >= cols * (int)sizeof(uchar) * 3);
+  PPL_ASSERT(dst_stride >= cols * (int)sizeof(uchar) * 3);
+  PPL_ASSERT(border_type == BORDER_REPLICATE || border_type == BORDER_REFLECT ||
+             border_type == BORDER_REFLECT_101)
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, sepfilter2d);
+  int global_cols, global_rows;
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[2];
+  int is_symmetric = ksize & 1;
+  ksize = ksize >> 1;
+  cl_mem buffer;
+  GpuMemoryBlock buffer_block;
+  buffer_block.offset = 0;
+  if (memoryPoolUsed()) {
+    pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols * 3);
+    buffer = buffer_block.data;
   }
-
-SEPFILTER2D_C1_TYPE(U8, uchar, U8, uchar)
-SEPFILTER2D_C1_TYPE(F32, float, F32, float)
-SEPFILTER2D_CN_TYPE(U8, uchar, U8, uchar, 3)
-SEPFILTER2D_CN_TYPE(F32, float, F32, float, 3)
-SEPFILTER2D_CN_TYPE(U8, uchar, U8, uchar, 4)
-SEPFILTER2D_CN_TYPE(F32, float, F32, float, 4)
-// SEPFILTER2D_CN_TYPE(F32, float, 3)
-// SEPFILTER2D_CN_TYPE(F32, float, 4)
-
-#define SEPFILTER2D_TYPE_C1_TEMPLATE(base_type_src, Tsrc, base_type_dst, Tdst) \
-  template <>                                                                  \
-  RetCode SepFilter2D<Tsrc, Tdst, 1>(                                          \
-      cl_command_queue queue, int height, int width,       \
-      int inWidthStride, const cl_mem inData, int ksize, const cl_mem kernelX, \
-      const cl_mem kernelY, int outWidthStride, cl_mem outData, float delta,   \
-      BorderType border_type) {                                                \
-    inWidthStride *= sizeof(Tsrc);                                             \
-    outWidthStride *= sizeof(Tdst);                                            \
-    RetCode code = sepfilter2dC1##base_type_src##base_type_dst(                \
-        inData, height, width, inWidthStride, kernelX, kernelY, ksize,         \
-        outData, outWidthStride, delta, border_type, queue);          \
-                                                                               \
-    return code;                                                               \
+  else {
+    cl_int error_code = 0;
+    buffer = clCreateBuffer(
+        frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+        rows * (int)sizeof(float) * cols * 3, NULL, &error_code);
+    CHECK_ERROR(error_code, clCreateBuffer);
   }
-
-#define SEPFILTER2D_TYPE_CN_TEMPLATE(base_type_src, Tsrc, base_type_dst, Tdst, \
-                                     channels)                                 \
-  template <>                                                                  \
-  RetCode SepFilter2D<Tsrc, Tdst, channels>(                                          \
-      cl_command_queue queue, int height, int width,       \
-      int inWidthStride, const cl_mem inData, int ksize, const cl_mem kernelX, \
-      const cl_mem kernelY, int outWidthStride, cl_mem outData, float delta,   \
-      BorderType border_type) {                                                \
-    inWidthStride *= sizeof(Tsrc);                                             \
-    outWidthStride *= sizeof(Tdst);                                            \
-    RetCode code = sepfilter2dC##channels##base_type_src##base_type_dst(       \
-        inData, height, width, inWidthStride, kernelX, kernelY, ksize,         \
-        outData, outWidthStride, delta, border_type, queue);          \
-                                                                               \
-    return code;                                                               \
+  if (border_type == BORDER_REPLICATE) {
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D SEPFILTER2DinterpolateReplicateBorderU8C3");
+    runOclKernel(frame_chain,
+                 "sepfilter2dU8F32interpolateReplicateBorderC3Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, kernel_x, ksize,
+                 src_stride, buffer, rows * (int)sizeof(float) * 3,
+                 is_symmetric, 0.f, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 4, 2);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32U8interpolateReplicateBorderC3Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, kernel_y, ksize, rows * (int)sizeof(float) * 3,
+                 dst, dst_stride, is_symmetric, delta, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
   }
+  else if (border_type == BORDER_REFLECT) {
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D SEPFILTER2DinterpolateReflectBorderU8C3");
+    runOclKernel(frame_chain,
+                 "sepfilter2dU8F32interpolateReflectBorderC3Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, kernel_x, ksize,
+                 src_stride, buffer, rows * (int)sizeof(float) * 3,
+                 is_symmetric, 0.f, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 4, 2);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32U8interpolateReflectBorderC3Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, kernel_y, ksize, rows * (int)sizeof(float) * 3,
+                 dst, dst_stride, is_symmetric, delta, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  else if (border_type == BORDER_REFLECT_101) {
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D SEPFILTER2DinterpolateReflect101BorderU8C3");
+    runOclKernel(frame_chain,
+                 "sepfilter2dU8F32interpolateReflect101BorderC3Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, kernel_x, ksize,
+                 src_stride, buffer, rows * (int)sizeof(float) * 3,
+                 is_symmetric, 0.f, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 4, 2);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32U8interpolateReflect101BorderC3Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, kernel_y, ksize, rows * (int)sizeof(float) * 3,
+                 dst, dst_stride, is_symmetric, delta, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  return RC_SUCCESS;
+}
 
-SEPFILTER2D_TYPE_C1_TEMPLATE(U8, uchar, U8, uchar)
-SEPFILTER2D_TYPE_C1_TEMPLATE(F32, float, F32, float)
-SEPFILTER2D_TYPE_CN_TEMPLATE(U8, uchar, U8, uchar, 3)
-SEPFILTER2D_TYPE_CN_TEMPLATE(F32, float, F32, float, 3)
-SEPFILTER2D_TYPE_CN_TEMPLATE(U8, uchar, U8, uchar, 4)
-SEPFILTER2D_TYPE_CN_TEMPLATE(F32, float, F32, float, 4)
-// SEPFILTER2D_TYPE_CN_TEMPLATE(F32, float, 3)
-// SEPFILTER2D_TYPE_CN_TEMPLATE(F32, float, 4)
+RetCode sepfilter2dC4U8(const cl_mem src, int rows, int cols, int src_stride,
+                        const cl_mem kernel_x, const cl_mem kernel_y, int ksize,
+                        cl_mem dst, int dst_stride, float delta,
+                        BorderType border_type, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(rows >= 1 && cols >= 1);
+  PPL_ASSERT(src_stride >= cols * (int)sizeof(uchar) * 4);
+  PPL_ASSERT(dst_stride >= cols * (int)sizeof(uchar) * 4);
+  PPL_ASSERT(border_type == BORDER_REPLICATE || border_type == BORDER_REFLECT ||
+             border_type == BORDER_REFLECT_101)
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, sepfilter2d);
+  int global_cols, global_rows;
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[2];
+  int is_symmetric = ksize & 1;
+  ksize = ksize >> 1;
+  cl_mem buffer;
+  GpuMemoryBlock buffer_block;
+  buffer_block.offset = 0;
+  if (memoryPoolUsed()) {
+    pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols * 4);
+    buffer = buffer_block.data;
+  }
+  else {
+    cl_int error_code = 0;
+    buffer = clCreateBuffer(
+        frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+        rows * (int)sizeof(float) * cols * 4, NULL, &error_code);
+    CHECK_ERROR(error_code, clCreateBuffer);
+  }
+  if (border_type == BORDER_REPLICATE) {
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D SEPFILTER2DinterpolateReplicateBorderU8C4");
+    runOclKernel(frame_chain,
+                 "sepfilter2dU8F32interpolateReplicateBorderC4Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, kernel_x, ksize,
+                 src_stride, buffer, rows * (int)sizeof(float) * 4,
+                 is_symmetric, 0.f, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 4, 2);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32U8interpolateReplicateBorderC4Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, kernel_y, ksize, rows * (int)sizeof(float) * 4,
+                 dst, dst_stride, is_symmetric, delta, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  else if (border_type == BORDER_REFLECT) {
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D SEPFILTER2DinterpolateReflectBorderU8C4");
+    runOclKernel(frame_chain,
+                 "sepfilter2dU8F32interpolateReflectBorderC4Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, kernel_x, ksize,
+                 src_stride, buffer, rows * (int)sizeof(float) * 4,
+                 is_symmetric, 0.f, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 4, 2);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32U8interpolateReflectBorderC4Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, kernel_y, ksize, rows * (int)sizeof(float) * 4,
+                 dst, dst_stride, is_symmetric, delta, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  else if (border_type == BORDER_REFLECT_101) {
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D SEPFILTER2DinterpolateReflect101BorderU8C4");
+    runOclKernel(frame_chain,
+                 "sepfilter2dU8F32interpolateReflect101BorderC4Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, kernel_x, ksize,
+                 src_stride, buffer, rows * (int)sizeof(float) * 4,
+                 is_symmetric, 0.f, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 4, 2);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32U8interpolateReflect101BorderC4Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, kernel_y, ksize, rows * (int)sizeof(float) * 4,
+                 dst, dst_stride, is_symmetric, delta, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  return RC_SUCCESS;
+}
 
+RetCode sepfilter2dC1F32(const cl_mem src, int rows, int cols, int src_stride,
+                         const cl_mem kernel_x, const cl_mem kernel_y,
+                         int ksize, cl_mem dst, int dst_stride, float delta,
+                         BorderType border_type, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(rows >= 1 && cols >= 1);
+  PPL_ASSERT(src_stride >= cols * (int)sizeof(float));
+  PPL_ASSERT(dst_stride >= cols * (int)sizeof(float));
+  PPL_ASSERT(border_type == BORDER_REPLICATE || border_type == BORDER_REFLECT ||
+             border_type == BORDER_REFLECT_101)
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, sepfilter2d);
+  int global_cols, global_rows;
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[2];
+  int is_symmetric = ksize & 1;
+  ksize = ksize >> 1;
+  if (border_type == BORDER_REPLICATE) {
+    global_cols = divideUp(cols, 2, 1);
+    global_rows = divideUp(rows, 2, 1);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D SEPFILTER2DinterpolateReplicateBorderF32C1");
+    cl_mem buffer;
+    GpuMemoryBlock buffer_block;
+    buffer_block.offset = 0;
+    if (memoryPoolUsed()) {
+      pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols);
+      buffer = buffer_block.data;
+    }
+    else {
+      cl_int error_code = 0;
+      buffer = clCreateBuffer(
+          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+          rows * (int)sizeof(float) * cols, NULL, &error_code);
+      CHECK_ERROR(error_code, clCreateBuffer);
+    }
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32F32interpolateReplicateBorderC1Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, kernel_x, ksize,
+                 src_stride, buffer, rows * (int)sizeof(float), is_symmetric,
+                 0.f, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 2, 1);
+    global_rows = divideUp(rows, 2, 1);
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32F32interpolateReplicateBorderC1Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, kernel_y, ksize, rows * (int)sizeof(float), dst,
+                 dst_stride, is_symmetric, delta, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  else if (border_type == BORDER_REFLECT) {
+    global_cols = divideUp(cols, 2, 1);
+    global_rows = divideUp(rows, 2, 1);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D SEPFILTER2DinterpolateReflectBorderF32C1");
+    cl_mem buffer;
+    GpuMemoryBlock buffer_block;
+    buffer_block.offset = 0;
+    if (memoryPoolUsed()) {
+      pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols);
+      buffer = buffer_block.data;
+    }
+    else {
+      cl_int error_code = 0;
+      buffer = clCreateBuffer(
+          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+          rows * (int)sizeof(float) * cols, NULL, &error_code);
+      CHECK_ERROR(error_code, clCreateBuffer);
+    }
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32F32interpolateReflectBorderC1Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, kernel_x, ksize,
+                 src_stride, buffer, rows * (int)sizeof(float), is_symmetric,
+                 0.f, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 2, 1);
+    global_rows = divideUp(rows, 2, 1);
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32F32interpolateReflectBorderC1Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, kernel_y, ksize, rows * (int)sizeof(float), dst,
+                 dst_stride, is_symmetric, delta, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  else if (border_type == BORDER_REFLECT_101) {
+    global_cols = divideUp(cols, 2, 1);
+    global_rows = divideUp(rows, 2, 1);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D SEPFILTER2DinterpolateReflect101BorderF32C1");
+    cl_mem buffer;
+    GpuMemoryBlock buffer_block;
+    buffer_block.offset = 0;
+    if (memoryPoolUsed()) {
+      pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols);
+      buffer = buffer_block.data;
+    }
+    else {
+      cl_int error_code = 0;
+      buffer = clCreateBuffer(
+          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+          rows * (int)sizeof(float) * cols, NULL, &error_code);
+      CHECK_ERROR(error_code, clCreateBuffer);
+    }
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32F32interpolateReflect101BorderC1Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, kernel_x, ksize,
+                 src_stride, buffer, rows * (int)sizeof(float), is_symmetric,
+                 0.f, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 2, 1);
+    global_rows = divideUp(rows, 2, 1);
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32F32interpolateReflect101BorderC1Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, kernel_y, ksize, rows * (int)sizeof(float), dst,
+                 dst_stride, is_symmetric, delta, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  return RC_SUCCESS;
+}
+
+RetCode sepfilter2dC3F32(const cl_mem src, int rows, int cols, int src_stride,
+                         const cl_mem kernel_x, const cl_mem kernel_y,
+                         int ksize, cl_mem dst, int dst_stride, float delta,
+                         BorderType border_type, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(rows >= 1 && cols >= 1);
+  PPL_ASSERT(src_stride >= cols * (int)sizeof(float) * 3);
+  PPL_ASSERT(dst_stride >= cols * (int)sizeof(float) * 3);
+  PPL_ASSERT(border_type == BORDER_REPLICATE || border_type == BORDER_REFLECT ||
+             border_type == BORDER_REFLECT_101)
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, sepfilter2d);
+  int global_cols, global_rows;
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[2];
+  int is_symmetric = ksize & 1;
+  ksize = ksize >> 1;
+  cl_mem buffer;
+  GpuMemoryBlock buffer_block;
+  buffer_block.offset = 0;
+  if (memoryPoolUsed()) {
+    pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols * 3);
+    buffer = buffer_block.data;
+  }
+  else {
+    cl_int error_code = 0;
+    buffer = clCreateBuffer(
+        frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+        rows * (int)sizeof(float) * cols * 3, NULL, &error_code);
+    CHECK_ERROR(error_code, clCreateBuffer);
+  }
+  if (border_type == BORDER_REPLICATE) {
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D SEPFILTER2DinterpolateReplicateBorderF32C3");
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32F32interpolateReplicateBorderC3Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, kernel_x, ksize,
+                 src_stride, buffer, rows * (int)sizeof(float) * 3,
+                 is_symmetric, 0.f, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 1, 0);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32F32interpolateReplicateBorderC3Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, kernel_y, ksize, rows * (int)sizeof(float) * 3,
+                 dst, dst_stride, is_symmetric, delta, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  else if (border_type == BORDER_REFLECT) {
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D SEPFILTER2DinterpolateReflectBorderF32C3");
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32F32interpolateReflectBorderC3Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, kernel_x, ksize,
+                 src_stride, buffer, rows * (int)sizeof(float) * 3,
+                 is_symmetric, 0.f, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 1, 0);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32F32interpolateReflectBorderC3Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, kernel_y, ksize, rows * (int)sizeof(float) * 3,
+                 dst, dst_stride, is_symmetric, delta, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  else if (border_type == BORDER_REFLECT_101) {
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D SEPFILTER2DinterpolateReflect101BorderF32C3");
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32F32interpolateReflect101BorderC3Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, kernel_x, ksize,
+                 src_stride, buffer, rows * (int)sizeof(float) * 3,
+                 is_symmetric, 0.f, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 1, 0);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32F32interpolateReflect101BorderC3Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, kernel_y, ksize, rows * (int)sizeof(float) * 3,
+                 dst, dst_stride, is_symmetric, delta, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  return RC_SUCCESS;
+}
+
+RetCode sepfilter2dC4F32(const cl_mem src, int rows, int cols, int src_stride,
+                         const cl_mem kernel_x, const cl_mem kernel_y,
+                         int ksize, cl_mem dst, int dst_stride, float delta,
+                         BorderType border_type, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(rows >= 1 && cols >= 1);
+  PPL_ASSERT(src_stride >= cols * (int)sizeof(float) * 4);
+  PPL_ASSERT(dst_stride >= cols * (int)sizeof(float) * 4);
+  PPL_ASSERT(border_type == BORDER_REPLICATE || border_type == BORDER_REFLECT ||
+             border_type == BORDER_REFLECT_101)
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, sepfilter2d);
+  int global_cols, global_rows;
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[2];
+  int is_symmetric = ksize & 1;
+  ksize = ksize >> 1;
+  cl_mem buffer;
+  GpuMemoryBlock buffer_block;
+  buffer_block.offset = 0;
+  if (memoryPoolUsed()) {
+    pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols * 4);
+    buffer = buffer_block.data;
+  }
+  else {
+    cl_int error_code = 0;
+    buffer = clCreateBuffer(
+        frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+        rows * (int)sizeof(float) * cols * 4, NULL, &error_code);
+    CHECK_ERROR(error_code, clCreateBuffer);
+  }
+  if (border_type == BORDER_REPLICATE) {
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D SEPFILTER2DinterpolateReplicateBorderF32C4");
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32F32interpolateReplicateBorderC4Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, kernel_x, ksize,
+                 src_stride, buffer, rows * (int)sizeof(float) * 4,
+                 is_symmetric, 0.f, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 1, 0);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32F32interpolateReplicateBorderC4Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, kernel_y, ksize, rows * (int)sizeof(float) * 4,
+                 dst, dst_stride, is_symmetric, delta, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  else if (border_type == BORDER_REFLECT) {
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D SEPFILTER2DinterpolateReflectBorderF32C4");
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32F32interpolateReflectBorderC4Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, kernel_x, ksize,
+                 src_stride, buffer, rows * (int)sizeof(float) * 4,
+                 is_symmetric, 0.f, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 1, 0);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32F32interpolateReflectBorderC4Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, kernel_y, ksize, rows * (int)sizeof(float) * 4,
+                 dst, dst_stride, is_symmetric, delta, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  else if (border_type == BORDER_REFLECT_101) {
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D SEPFILTER2DinterpolateReflect101BorderF32C4");
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32F32interpolateReflect101BorderC4Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, kernel_x, ksize,
+                 src_stride, buffer, rows * (int)sizeof(float) * 4,
+                 is_symmetric, 0.f, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 1, 0);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "sepfilter2dF32F32interpolateReflect101BorderC4Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, kernel_y, ksize, rows * (int)sizeof(float) * 4,
+                 dst, dst_stride, is_symmetric, delta, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  return RC_SUCCESS;
+}
+
+template <>
+RetCode SepFilter2D<uchar, uchar, 1>(cl_command_queue queue,
+                                     int height,
+                                     int width,
+                                     int inWidthStride,
+                                     const cl_mem inData,
+                                     int ksize,
+                                     const cl_mem kernelX,
+                                     const cl_mem kernelY,
+                                     int outWidthStride,
+                                     cl_mem outData,
+                                     float delta,
+                                     BorderType border_type) {
+  inWidthStride *= sizeof(uchar);
+  outWidthStride *= sizeof(uchar);
+  RetCode code = sepfilter2dC1U8(inData, height, width, inWidthStride, kernelX,
+                                 kernelY, ksize, outData, outWidthStride, delta,
+                                 border_type, queue);
+  return code;
+}
+
+template <>
+RetCode SepFilter2D<uchar, uchar, 3>(cl_command_queue queue,
+                                     int height,
+                                     int width,
+                                     int inWidthStride,
+                                     const cl_mem inData,
+                                     int ksize,
+                                     const cl_mem kernelX,
+                                     const cl_mem kernelY,
+                                     int outWidthStride,
+                                     cl_mem outData,
+                                     float delta,
+                                     BorderType border_type) {
+  inWidthStride *= sizeof(uchar);
+  outWidthStride *= sizeof(uchar);
+  RetCode code = sepfilter2dC3U8(inData, height, width, inWidthStride, kernelX,
+                                 kernelY, ksize, outData, outWidthStride, delta,
+                                 border_type, queue);
+  return code;
+}
+
+template <>
+RetCode SepFilter2D<uchar, uchar, 4>(cl_command_queue queue,
+                                     int height,
+                                     int width,
+                                     int inWidthStride,
+                                     const cl_mem inData,
+                                     int ksize,
+                                     const cl_mem kernelX,
+                                     const cl_mem kernelY,
+                                     int outWidthStride,
+                                     cl_mem outData,
+                                     float delta,
+                                     BorderType border_type) {
+  inWidthStride *= sizeof(uchar);
+  outWidthStride *= sizeof(uchar);
+  RetCode code = sepfilter2dC4U8(inData, height, width, inWidthStride, kernelX,
+                                 kernelY, ksize, outData, outWidthStride, delta,
+                                 border_type, queue);
+  return code;
+}
+
+template <>
+RetCode SepFilter2D<float, float, 1>(cl_command_queue queue,
+                                     int height,
+                                     int width,
+                                     int inWidthStride,
+                                     const cl_mem inData,
+                                     int ksize,
+                                     const cl_mem kernelX,
+                                     const cl_mem kernelY,
+                                     int outWidthStride,
+                                     cl_mem outData,
+                                     float delta,
+                                     BorderType border_type) {
+  inWidthStride *= sizeof(float);
+  outWidthStride *= sizeof(float);
+  RetCode code = sepfilter2dC1F32(inData, height, width, inWidthStride, kernelX,
+                                  kernelY, ksize, outData, outWidthStride,
+                                  delta, border_type, queue);
+  return code;
+}
+
+template <>
+RetCode SepFilter2D<float, float, 3>(cl_command_queue queue,
+                                     int height,
+                                     int width,
+                                     int inWidthStride,
+                                     const cl_mem inData,
+                                     int ksize,
+                                     const cl_mem kernelX,
+                                     const cl_mem kernelY,
+                                     int outWidthStride,
+                                     cl_mem outData,
+                                     float delta,
+                                     BorderType border_type) {
+  inWidthStride *= sizeof(float);
+  outWidthStride *= sizeof(float);
+  RetCode code = sepfilter2dC3F32(inData, height, width, inWidthStride, kernelX,
+                                  kernelY, ksize, outData, outWidthStride,
+                                  delta, border_type, queue);
+  return code;
+}
+
+template <>
+RetCode SepFilter2D<float, float, 4>(cl_command_queue queue,
+                                     int height,
+                                     int width,
+                                     int inWidthStride,
+                                     const cl_mem inData,
+                                     int ksize,
+                                     const cl_mem kernelX,
+                                     const cl_mem kernelY,
+                                     int outWidthStride,
+                                     cl_mem outData,
+                                     float delta,
+                                     BorderType border_type) {
+  inWidthStride *= sizeof(float);
+  outWidthStride *= sizeof(float);
+  RetCode code = sepfilter2dC4F32(inData, height, width, inWidthStride, kernelX,
+                                  kernelY, ksize, outData, outWidthStride,
+                                  delta, border_type, queue);
+  return code;
+}
 
 }  // namespace ocl
 }  // namespace cv

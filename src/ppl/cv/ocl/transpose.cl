@@ -14,225 +14,417 @@
  * under the License.
  */
 
-#define INDEX_CONVERT1 x
-#define INDEX_CONVERT2 y
-#define INDEX_CONVERT3 z
-#define INDEX_CONVERT4 w
-
-#define TRANSPOSE_VEC1(src_array, i) \
-  src_array[0].INDEX_CONVERT##i
-#define TRANSPOSE_VEC2(src_array, i) \
-  TRANSPOSE_VEC1(src_array, i), src_array[1].INDEX_CONVERT##i
-#define TRANSPOSE_VEC3(src_array, i) \
-  TRANSPOSE_VEC2(src_array, i), src_array[2].INDEX_CONVERT##i
-#define TRANSPOSE_VEC4(src_array, i) \
-  TRANSPOSE_VEC3(src_array, i), src_array[3].INDEX_CONVERT##i
-
-#define vstore1 vstore
-#define uchar1 uchar
-#define float1 float
-
-#define TRANSPOSE_ELEMENT1(T, src_array, output, j)              \
-  output[0] = (T##j)(TRANSPOSE_VEC##j(src_array, 1));
-#define TRANSPOSE_ELEMENT2(T, src_array, output, j)              \
-  TRANSPOSE_ELEMENT1(T, src_array, output, j)                    \
-  output[1] = (T##j)(TRANSPOSE_VEC##j(src_array, 2));
-#define TRANSPOSE_ELEMENT3(T, src_array, output, j)              \
-  TRANSPOSE_ELEMENT2(T, src_array, output, j)                    \
-  output[2] = (T##j)(TRANSPOSE_VEC##j(src_array, 3));
-#define TRANSPOSE_ELEMENT4(T, src_array, output, j)              \
-  TRANSPOSE_ELEMENT3(T, src_array, output, j)                    \
-  output[3] = (T##j)(TRANSPOSE_VEC##j(src_array, 4));
-
-#define VSTORE_REMAIN_ROWS1(input, rows_load)                    \
-  int offset = element_y * rows_load;                            \
-  dst[offset] = input;
-
-#define VSTORE_REMAIN_ROWS1_VEC(input, rows_load)                \
-  int offset = element_y * rows_load;                            \
-  dst[offset] = input.INDEX_CONVERT##1;
-
-#define VSTORE_REMAIN_ROWS2(input, rows_load)                    \
-  VSTORE_REMAIN_ROWS1_VEC(input, rows_load)                      \
-  dst[offset + 1] = input.INDEX_CONVERT##2;
-
-#define VSTORE_REMAIN_ROWS3(input, rows_load)                    \
-  VSTORE_REMAIN_ROWS2(input, rows_load)                          \
-  dst[offset + 2] = input.INDEX_CONVERT##3;
-
-#define TRANSPOSE_AND_SAVE_VEC(T, src_array, output, rows_load, i, j) \
-  {                                                                   \
-    T##j output_value[i];                                             \
-    TRANSPOSE_ELEMENT##i(T, src_array, output, j)                     \
-    for (int k = 0; k < i; k++) {                                     \
-      vstore##j(output[k], element_y, dst);                           \
-      dst = (global T*)((uchar*)dst + dst_stride);                    \
-    }                                                                 \
+#if defined(TRANSPOSE_U8C1) || defined(ALL_KERNELS)
+__kernel
+void transposeU8C1Kernel(global const uchar* src, int rows, int cols,
+                         int src_stride, global uchar* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x * 4, index_y = element_y * 4;
+  if (index_x >= cols || index_y >= rows) {
+    return;
   }
-
-#define TRANSPOSE_AND_SAVE_SCALE(T, src_array, output, rows_load, i, j) \
-  {                                                                     \
-    T##j output_value[i];                                               \
-    TRANSPOSE_ELEMENT##i(T, src_array, output, j)                       \
-    for (int k = 0; k < i; k++) {                                       \
-      VSTORE_REMAIN_ROWS##j(output[k], rows_load)                       \
-      dst = (global T*)((uchar*)dst + dst_stride);                      \
-    }                                                                   \
+  src = (global const uchar*)((uchar*)src + index_y * src_stride);
+  int remain_cols = cols - index_x, remain_rows = rows - index_y;
+  uchar4 input_value[4];
+  for (int i = 0; i < min(remain_rows, 4); i++) {
+    input_value[i] = vload4(element_x, src);
+    src = (global const uchar*)((uchar*)src + src_stride);
   }
-
-#define TRANSPOSE_C1_RAMAIN_ROW1(T, cols_load, rows_load, rows_load_global, \
-                                 save_name)                                 \
-  if (remain_cols >= cols_load)                                             \
-  TRANSPOSE_AND_SAVE_##save_name(T, input_value, output_value,              \
-                                 rows_load_global, cols_load, rows_load)
-
-#define TRANSPOSE_C1_RAMAIN_ROW2(T, cols_load, rows_load, rows_load_global, \
-                                 save_name)                                 \
-  TRANSPOSE_C1_RAMAIN_ROW1(T, cols_load, rows_load, rows_load_global,       \
-                           save_name)                                       \
-  else if (remain_cols == 1) TRANSPOSE_AND_SAVE_##save_name(                \
-      T, input_value, output_value, rows_load_global, 1, rows_load)
-
-#define TRANSPOSE_C1_RAMAIN_ROW3(T, cols_load, rows_load, rows_load_global, \
-                                 save_name)                                 \
-  TRANSPOSE_C1_RAMAIN_ROW2(T, cols_load, rows_load, rows_load_global,       \
-                           save_name)                                       \
-  else if (remain_cols == 2) TRANSPOSE_AND_SAVE_##save_name(                \
-      T, input_value, output_value, rows_load_global, 2, rows_load)
-
-#define TRANSPOSE_C1_RAMAIN_ROW4(T, cols_load, rows_load, rows_load_global, \
-                                 save_name)                                 \
-  TRANSPOSE_C1_RAMAIN_ROW3(T, cols_load, rows_load, rows_load_global,       \
-                           save_name)                                       \
-  else if (remain_cols == 3) TRANSPOSE_AND_SAVE_##save_name(                \
-      T, input_value, output_value, rows_load_global, 3, rows_load)
-
-#define TRANSPOSE_C1_RAMAIN_COL1(T, cols_load, rows_load)                  \
-  if (remain_rows >= rows_load) {                                          \
-    TRANSPOSE_C1_RAMAIN_ROW##cols_load(T, cols_load, rows_load, rows_load, \
-                                       VEC)                                \
+  dst = (global uchar*)((uchar*)dst + dst_stride * index_x);
+  if (remain_rows >= 4) {
+    if (remain_cols >= 4) {
+      uchar4 output_value[4];
+      output_value[0] = (uchar4)(input_value[0].x, input_value[1].x,
+                                 input_value[2].x, input_value[3].x);
+      output_value[1] = (uchar4)(input_value[0].y, input_value[1].y,
+                                 input_value[2].y, input_value[3].y);
+      output_value[2] = (uchar4)(input_value[0].z, input_value[1].z,
+                                 input_value[2].z, input_value[3].z);
+      output_value[3] = (uchar4)(input_value[0].w, input_value[1].w,
+                                 input_value[2].w, input_value[3].w);
+      for (int k = 0; k < 4; k++) {
+        vstore4(output_value[k], element_y, dst);
+        dst = (global uchar*)((uchar*)dst + dst_stride);
+      }
+    }
+    else if (remain_cols == 1) {
+      uchar4 output_value[1];
+      output_value[0] = (uchar4)(input_value[0].x, input_value[1].x,
+                                 input_value[2].x, input_value[3].x);
+      for (int k = 0; k < 1; k++) {
+        vstore4(output_value[k], element_y, dst);
+        dst = (global uchar*)((uchar*)dst + dst_stride);
+      }
+    }
+    else if (remain_cols == 2) {
+      uchar4 output_value[2];
+      output_value[0] = (uchar4)(input_value[0].x, input_value[1].x,
+                                 input_value[2].x, input_value[3].x);
+      output_value[1] = (uchar4)(input_value[0].y, input_value[1].y,
+                                 input_value[2].y, input_value[3].y);
+      for (int k = 0; k < 2; k++) {
+        vstore4(output_value[k], element_y, dst);
+        dst = (global uchar*)((uchar*)dst + dst_stride);
+      }
+    }
+    else if (remain_cols == 3) {
+      uchar4 output_value[3];
+      output_value[0] = (uchar4)(input_value[0].x, input_value[1].x,
+                                 input_value[2].x, input_value[3].x);
+      output_value[1] = (uchar4)(input_value[0].y, input_value[1].y,
+                                 input_value[2].y, input_value[3].y);
+      output_value[2] = (uchar4)(input_value[0].z, input_value[1].z,
+                                 input_value[2].z, input_value[3].z);
+      for (int k = 0; k < 3; k++) {
+        vstore4(output_value[k], element_y, dst);
+        dst = (global uchar*)((uchar*)dst + dst_stride);
+      }
+    }
   }
-
-#define TRANSPOSE_C1_RAMAIN_COL2(T, cols_load, rows_load)                 \
-  TRANSPOSE_C1_RAMAIN_COL1(T, cols_load, rows_load)                       \
-  else if (remain_rows == 1) {                                            \
-    TRANSPOSE_C1_RAMAIN_ROW##cols_load(T, cols_load, 1, rows_load, SCALE) \
+  else if (remain_rows == 1) {
+    if (remain_cols >= 4) {
+      uchar output_value[4];
+      output_value[0] = (uchar)(input_value[0].x);
+      output_value[1] = (uchar)(input_value[0].y);
+      output_value[2] = (uchar)(input_value[0].z);
+      output_value[3] = (uchar)(input_value[0].w);
+      for (int k = 0; k < 4; k++) {
+        int offset = element_y * 4;
+        dst[offset] = output_value[k];
+        dst = (global uchar*)((uchar*)dst + dst_stride);
+      }
+    }
+    else if (remain_cols == 1) {
+      uchar output_value[1];
+      output_value[0] = (uchar)(input_value[0].x);
+      for (int k = 0; k < 1; k++) {
+        int offset = element_y * 4;
+        dst[offset] = output_value[k];
+        dst = (global uchar*)((uchar*)dst + dst_stride);
+      }
+    }
+    else if (remain_cols == 2) {
+      uchar output_value[2];
+      output_value[0] = (uchar)(input_value[0].x);
+      output_value[1] = (uchar)(input_value[0].y);
+      for (int k = 0; k < 2; k++) {
+        int offset = element_y * 4;
+        dst[offset] = output_value[k];
+        dst = (global uchar*)((uchar*)dst + dst_stride);
+      }
+    }
+    else if (remain_cols == 3) {
+      uchar output_value[3];
+      output_value[0] = (uchar)(input_value[0].x);
+      output_value[1] = (uchar)(input_value[0].y);
+      output_value[2] = (uchar)(input_value[0].z);
+      for (int k = 0; k < 3; k++) {
+        int offset = element_y * 4;
+        dst[offset] = output_value[k];
+        dst = (global uchar*)((uchar*)dst + dst_stride);
+      }
+    }
   }
-
-#define TRANSPOSE_C1_RAMAIN_COL3(T, cols_load, rows_load)                 \
-  TRANSPOSE_C1_RAMAIN_COL2(T, cols_load, rows_load)                       \
-  else if (remain_rows == 2) {                                            \
-    TRANSPOSE_C1_RAMAIN_ROW##cols_load(T, cols_load, 2, rows_load, SCALE) \
+  else if (remain_rows == 2) {
+    if (remain_cols >= 4) {
+      uchar2 output_value[4];
+      output_value[0] = (uchar2)(input_value[0].x, input_value[1].x);
+      output_value[1] = (uchar2)(input_value[0].y, input_value[1].y);
+      output_value[2] = (uchar2)(input_value[0].z, input_value[1].z);
+      output_value[3] = (uchar2)(input_value[0].w, input_value[1].w);
+      for (int k = 0; k < 4; k++) {
+        int offset = element_y * 4;
+        dst[offset] = output_value[k].x;
+        dst[offset + 1] = output_value[k].y;
+        dst = (global uchar*)((uchar*)dst + dst_stride);
+      }
+    }
+    else if (remain_cols == 1) {
+      uchar2 output_value[1];
+      output_value[0] = (uchar2)(input_value[0].x, input_value[1].x);
+      for (int k = 0; k < 1; k++) {
+        int offset = element_y * 4;
+        dst[offset] = output_value[k].x;
+        dst[offset + 1] = output_value[k].y;
+        dst = (global uchar*)((uchar*)dst + dst_stride);
+      }
+    }
+    else if (remain_cols == 2) {
+      uchar2 output_value[2];
+      output_value[0] = (uchar2)(input_value[0].x, input_value[1].x);
+      output_value[1] = (uchar2)(input_value[0].y, input_value[1].y);
+      for (int k = 0; k < 2; k++) {
+        int offset = element_y * 4;
+        dst[offset] = output_value[k].x;
+        dst[offset + 1] = output_value[k].y;
+        dst = (global uchar*)((uchar*)dst + dst_stride);
+      }
+    }
+    else if (remain_cols == 3) {
+      uchar2 output_value[3];
+      output_value[0] = (uchar2)(input_value[0].x, input_value[1].x);
+      output_value[1] = (uchar2)(input_value[0].y, input_value[1].y);
+      output_value[2] = (uchar2)(input_value[0].z, input_value[1].z);
+      for (int k = 0; k < 3; k++) {
+        int offset = element_y * 4;
+        dst[offset] = output_value[k].x;
+        dst[offset + 1] = output_value[k].y;
+        dst = (global uchar*)((uchar*)dst + dst_stride);
+      }
+    }
   }
-
-#define TRANSPOSE_C1_RAMAIN_COL4(T, cols_load, rows_load)                 \
-  TRANSPOSE_C1_RAMAIN_COL3(T, cols_load, rows_load)                       \
-  else if (remain_rows == 3) {                                            \
-    TRANSPOSE_C1_RAMAIN_ROW##cols_load(T, cols_load, 3, rows_load, SCALE) \
+  else if (remain_rows == 3) {
+    if (remain_cols >= 4) {
+      uchar3 output_value[4];
+      output_value[0] =
+          (uchar3)(input_value[0].x, input_value[1].x, input_value[2].x);
+      output_value[1] =
+          (uchar3)(input_value[0].y, input_value[1].y, input_value[2].y);
+      output_value[2] =
+          (uchar3)(input_value[0].z, input_value[1].z, input_value[2].z);
+      output_value[3] =
+          (uchar3)(input_value[0].w, input_value[1].w, input_value[2].w);
+      for (int k = 0; k < 4; k++) {
+        int offset = element_y * 4;
+        dst[offset] = output_value[k].x;
+        dst[offset + 1] = output_value[k].y;
+        dst[offset + 2] = output_value[k].z;
+        dst = (global uchar*)((uchar*)dst + dst_stride);
+      }
+    }
+    else if (remain_cols == 1) {
+      uchar3 output_value[1];
+      output_value[0] =
+          (uchar3)(input_value[0].x, input_value[1].x, input_value[2].x);
+      for (int k = 0; k < 1; k++) {
+        int offset = element_y * 4;
+        dst[offset] = output_value[k].x;
+        dst[offset + 1] = output_value[k].y;
+        dst[offset + 2] = output_value[k].z;
+        dst = (global uchar*)((uchar*)dst + dst_stride);
+      }
+    }
+    else if (remain_cols == 2) {
+      uchar3 output_value[2];
+      output_value[0] =
+          (uchar3)(input_value[0].x, input_value[1].x, input_value[2].x);
+      output_value[1] =
+          (uchar3)(input_value[0].y, input_value[1].y, input_value[2].y);
+      for (int k = 0; k < 2; k++) {
+        int offset = element_y * 4;
+        dst[offset] = output_value[k].x;
+        dst[offset + 1] = output_value[k].y;
+        dst[offset + 2] = output_value[k].z;
+        dst = (global uchar*)((uchar*)dst + dst_stride);
+      }
+    }
+    else if (remain_cols == 3) {
+      uchar3 output_value[3];
+      output_value[0] =
+          (uchar3)(input_value[0].x, input_value[1].x, input_value[2].x);
+      output_value[1] =
+          (uchar3)(input_value[0].y, input_value[1].y, input_value[2].y);
+      output_value[2] =
+          (uchar3)(input_value[0].z, input_value[1].z, input_value[2].z);
+      for (int k = 0; k < 3; k++) {
+        int offset = element_y * 4;
+        dst[offset] = output_value[k].x;
+        dst[offset + 1] = output_value[k].y;
+        dst[offset + 2] = output_value[k].z;
+        dst = (global uchar*)((uchar*)dst + dst_stride);
+      }
+    }
   }
-
-// #if defined(TRANSPOSE_U81C) || defined(TRANSPOSE_F321C) || defined(ALL_KERNELS)
-#define TRANSPOSE_KERNEL_C1_TYPE(base_type, T, rows_load, cols_load)          \
-  __kernel void transpose##base_type##C1Kernel(                               \
-      global const T* src, int rows, int cols, int src_stride, global T* dst, \
-      int dst_stride) {                                                       \
-    int element_x = get_global_id(0);                                         \
-    int element_y = get_global_id(1);                                         \
-    int index_x = element_x * cols_load, index_y = element_y * rows_load;     \
-    if (index_x >= cols || index_y >= rows) {                                 \
-      return;                                                                 \
-    }                                                                         \
-                                                                              \
-    src = (global const T*)((uchar*)src + index_y * src_stride);              \
-    int remain_cols = cols - index_x, remain_rows = rows - index_y;           \
-                                                                              \
-    T##cols_load input_value[rows_load];                                      \
-    for (int i = 0; i < min(remain_rows, rows_load); i++) {                   \
-      input_value[i] = vload##cols_load(element_x, src);                      \
-      src = (global const T*)((uchar*)src + src_stride);                      \
-    }                                                                         \
-                                                                              \
-    dst = (global T*)((uchar*)dst + dst_stride * index_x);                    \
-    TRANSPOSE_C1_RAMAIN_COL##rows_load(T, cols_load, rows_load)               \
-  }
-// #endif
-
-#define TRANSPOSE_SAVE_CHANNEL1(T, rows_load, channels)   \
-  if (remain_rows >= rows_load) {                         \
-    for (int i = 0; i < rows_load; i++) {                 \
-      vstore##channels(input_value[i], index_y + i, dst); \
-    }                                                     \
-  }
-
-#define TRANSPOSE_SAVE_CHANNEL2(T, rows_load, channels) \
-  TRANSPOSE_SAVE_CHANNEL1(T, rows_load, channels)       \
-  else if (remain_rows == 1) {                          \
-    vstore##channels(input_value[0], index_y, dst);     \
-  }
-
-#define TRANSPOSE_SAVE_CHANNEL3(T, rows_load, channels) \
-  TRANSPOSE_SAVE_CHANNEL2(T, rows_load, channels)       \
-  else if (remain_rows == 2) {                          \
-    vstore##channels(input_value[0], index_y, dst);     \
-    vstore##channels(input_value[1], index_y + 1, dst); \
-  }
-
-#define TRANSPOSE_SAVE_CHANNEL4(T, rows_load, channels) \
-  TRANSPOSE_SAVE_CHANNEL3(T, rows_load, channels)       \
-  else if (remain_rows == 3) {                          \
-    vstore##channels(input_value[0], index_y, dst);     \
-    vstore##channels(input_value[1], index_y + 1, dst); \
-    vstore##channels(input_value[2], index_y + 2, dst); \
-  }
-
-#if defined(TRANSPOSE_U8C3) || defined(TRANSPOSE_F32C3) || \
-    defined(TRANSPOSE_U8C4) || defined(TRANSPOSE_F32C4) || defined(ALL_KERNELS)
-#define TRANSPOSE_KERNEL_CN_TYPE(base_type, T, channels, rows_load)           \
-  __kernel void transpose##base_type##C##channels##Kernel(                    \
-      global const T* src, int rows, int cols, int src_stride, global T* dst, \
-      int dst_stride) {                                                       \
-    int element_x = get_global_id(0);                                         \
-    int element_y = get_global_id(1);                                         \
-    int index_x = element_x, index_y = element_y * rows_load;                 \
-    if (index_x >= cols || index_y >= rows) {                                 \
-      return;                                                                 \
-    }                                                                         \
-                                                                              \
-    src = (global const T*)((uchar*)src + index_y * src_stride);              \
-    int remain_rows = rows - index_y;                                         \
-                                                                              \
-    T##channels input_value[rows_load];                                       \
-    for (int i = 0; i < min(remain_rows, rows_load); i++) {                   \
-      input_value[i] = vload##channels(element_x, src);                       \
-      src = (global const T*)((uchar*)src + src_stride);                      \
-    }                                                                         \
-                                                                              \
-    dst = (global T*)((uchar*)dst + dst_stride * index_x);                    \
-    TRANSPOSE_SAVE_CHANNEL##rows_load(T, rows_load, channels)                 \
-  }
+}
 #endif
-TRANSPOSE_KERNEL_C1_TYPE(F32, float, 2, 2)
 
-#if defined(TRANSPOSE_U81C) || defined(ALL_KERNELS)
-TRANSPOSE_KERNEL_C1_TYPE(U8, uchar, 4, 4)
-#endif
-
-#if defined(TRANSPOSE_F321C) || defined(ALL_KERNELS)
-TRANSPOSE_KERNEL_C1_TYPE(F32, float, 2, 2)
-#endif
 
 #if defined(TRANSPOSE_U8C3) || defined(ALL_KERNELS)
-TRANSPOSE_KERNEL_CN_TYPE(U8, uchar, 3, 4)
-#endif
-
-#if defined(TRANSPOSE_F32C3) || defined(ALL_KERNELS)
-TRANSPOSE_KERNEL_CN_TYPE(F32, float, 3, 1)
+__kernel
+void transposeU8C3Kernel(global const uchar* src, int rows, int cols,
+                         int src_stride, global uchar* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x, index_y = element_y * 4;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const uchar*)((uchar*)src + index_y * src_stride);
+  int remain_rows = rows - index_y;
+  uchar3 input_value[4];
+  for (int i = 0; i < min(remain_rows, 4); i++) {
+    input_value[i] = vload3(element_x, src);
+    src = (global const uchar*)((uchar*)src + src_stride);
+  }
+  dst = (global uchar*)((uchar*)dst + dst_stride * index_x);
+  if (remain_rows >= 4) {
+    for (int i = 0; i < 4; i++) {
+      vstore3(input_value[i], index_y + i, dst);
+    }
+  }
+  else if (remain_rows == 1) {
+    vstore3(input_value[0], index_y, dst);
+  }
+  else if (remain_rows == 2) {
+    vstore3(input_value[0], index_y, dst);
+    vstore3(input_value[1], index_y + 1, dst);
+  }
+  else if (remain_rows == 3) {
+    vstore3(input_value[0], index_y, dst);
+    vstore3(input_value[1], index_y + 1, dst);
+    vstore3(input_value[2], index_y + 2, dst);
+  }
+}
 #endif
 
 #if defined(TRANSPOSE_U8C4) || defined(ALL_KERNELS)
-TRANSPOSE_KERNEL_CN_TYPE(U8, uchar, 4, 4)
+__kernel
+void transposeU8C4Kernel(global const uchar* src, int rows, int cols,
+                         int src_stride, global uchar* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x, index_y = element_y * 4;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const uchar*)((uchar*)src + index_y * src_stride);
+  int remain_rows = rows - index_y;
+  uchar4 input_value[4];
+  for (int i = 0; i < min(remain_rows, 4); i++) {
+    input_value[i] = vload4(element_x, src);
+    src = (global const uchar*)((uchar*)src + src_stride);
+  }
+  dst = (global uchar*)((uchar*)dst + dst_stride * index_x);
+  if (remain_rows >= 4) {
+    for (int i = 0; i < 4; i++) {
+      vstore4(input_value[i], index_y + i, dst);
+    }
+  }
+  else if (remain_rows == 1) {
+    vstore4(input_value[0], index_y, dst);
+  }
+  else if (remain_rows == 2) {
+    vstore4(input_value[0], index_y, dst);
+    vstore4(input_value[1], index_y + 1, dst);
+  }
+  else if (remain_rows == 3) {
+    vstore4(input_value[0], index_y, dst);
+    vstore4(input_value[1], index_y + 1, dst);
+    vstore4(input_value[2], index_y + 2, dst);
+  }
+}
+#endif
+
+#if defined(TRANSPOSE_F32C1) || defined(ALL_KERNELS)
+__kernel
+void transposeF32C1Kernel(global const float* src, int rows, int cols,
+                          int src_stride, global float* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x * 2, index_y = element_y * 2;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const float*)((uchar*)src + index_y * src_stride);
+  int remain_cols = cols - index_x, remain_rows = rows - index_y;
+  float2 input_value[2];
+  for (int i = 0; i < min(remain_rows, 2); i++) {
+    input_value[i] = vload2(element_x, src);
+    src = (global const float*)((uchar*)src + src_stride);
+  }
+  dst = (global float*)((uchar*)dst + dst_stride * index_x);
+  if (remain_rows >= 2) {
+    if (remain_cols >= 2) {
+      float2 output_value[2];
+      output_value[0] = (float2)(input_value[0].x, input_value[1].x);
+      output_value[1] = (float2)(input_value[0].y, input_value[1].y);
+      for (int k = 0; k < 2; k++) {
+        vstore2(output_value[k], element_y, dst);
+        dst = (global float*)((uchar*)dst + dst_stride);
+      }
+    }
+    else if (remain_cols == 1) {
+      float2 output_value[1];
+      output_value[0] = (float2)(input_value[0].x, input_value[1].x);
+      for (int k = 0; k < 1; k++) {
+        vstore2(output_value[k], element_y, dst);
+        dst = (global float*)((uchar*)dst + dst_stride);
+      }
+    }
+  }
+  else if (remain_rows == 1) {
+    if (remain_cols >= 2) {
+      float output_value[2];
+      output_value[0] = (float)(input_value[0].x);
+      output_value[1] = (float)(input_value[0].y);
+      for (int k = 0; k < 2; k++) {
+        int offset = element_y * 2;
+        dst[offset] = output_value[k];
+        dst = (global float*)((uchar*)dst + dst_stride);
+      }
+    }
+    else if (remain_cols == 1) {
+      float output_value[1];
+      output_value[0] = (float)(input_value[0].x);
+      for (int k = 0; k < 1; k++) {
+        int offset = element_y * 2;
+        dst[offset] = output_value[k];
+        dst = (global float*)((uchar*)dst + dst_stride);
+      }
+    }
+  }
+}
+#endif
+
+#if defined(TRANSPOSE_F32C3) || defined(ALL_KERNELS)
+__kernel
+void transposeF32C3Kernel(global const float* src, int rows, int cols,
+                          int src_stride, global float* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x, index_y = element_y * 1;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const float*)((uchar*)src + index_y * src_stride);
+  int remain_rows = rows - index_y;
+  float3 input_value[1];
+  for (int i = 0; i < min(remain_rows, 1); i++) {
+    input_value[i] = vload3(element_x, src);
+    src = (global const float*)((uchar*)src + src_stride);
+  }
+  dst = (global float*)((uchar*)dst + dst_stride * index_x);
+  if (remain_rows >= 1) {
+    for (int i = 0; i < 1; i++) {
+      vstore3(input_value[i], index_y + i, dst);
+    }
+  }
+}
 #endif
 
 #if defined(TRANSPOSE_F32C4) || defined(ALL_KERNELS)
-TRANSPOSE_KERNEL_CN_TYPE(F32, float, 4, 1)
+__kernel
+void transposeF32C4Kernel(global const float* src, int rows, int cols,
+                          int src_stride, global float* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x, index_y = element_y * 1;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const float*)((uchar*)src + index_y * src_stride);
+  int remain_rows = rows - index_y;
+  float4 input_value[1];
+  for (int i = 0; i < min(remain_rows, 1); i++) {
+    input_value[i] = vload4(element_x, src);
+    src = (global const float*)((uchar*)src + src_stride);
+  }
+  dst = (global float*)((uchar*)dst + dst_stride * index_x);
+  if (remain_rows >= 1) {
+    for (int i = 0; i < 1; i++) {
+      vstore4(input_value[i], index_y + i, dst);
+    }
+  }
+}
 #endif

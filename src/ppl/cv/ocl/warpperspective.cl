@@ -429,11 +429,6 @@ void warpperspectiveNPU8Kernel(global const uchar* src, int src_rows, int src_co
     return;
   }
 
-/*   float2 src_xy;
-  src_xy.x = coeff0 * element_x + coeff1 * element_y + coeff2;
-  src_xy.y = coeff3 * element_x + coeff4 * element_y + coeff5;
-  int src_x = floor(src_xy.x);
-  int src_y = floor(src_xy.y); */
 
   float2 src_xy;
 
@@ -446,18 +441,6 @@ void warpperspectiveNPU8Kernel(global const uchar* src, int src_rows, int src_co
   int src_x = floor(src_xy.x);
   int src_y = floor(src_xy.y);
 
-  // int weight = convert_int_sat_rte(coeff6 * AB_SCALE) * element_x;
-  // weight = weight + convert_int_sat_rte((coeff7) * AB_SCALE) * element_y + 
-  //          convert_int_sat_rte(coeff8 * AB_SCALE);
-  // int src_x = convert_int_sat_rte((coeff1) * AB_SCALE) * element_y +
-  //              convert_int_sat_rte(coeff2 * AB_SCALE);
-  // src_x = convert_int_sat_rte(coeff0 * AB_SCALE) * element_x + src_x;
-  // int src_y = convert_int_sat_rte((coeff4) * AB_SCALE) * element_y +
-  //              convert_int_sat_rte(coeff5 * AB_SCALE);
-  // src_y = convert_int_sat_rte(coeff3 * AB_SCALE) * element_x + src_y;
-  
-  // src_x = (src_x + ((weight + 1) >> 1)) / weight;
-  // src_y = (src_y + ((weight + 1) >> 1)) / weight;
 
   if (border_type == BORDER_CONSTANT) {
     if (src_x >= 0 && src_x < src_cols && src_y >= 0 && src_y < src_rows) {
@@ -563,12 +546,6 @@ void warpperspectiveNPF32Kernel(global const float* src, int src_rows, int src_c
     return;
   }
 
-/*   float2 src_xy;
-  src_xy.x = coeff0 * element_x + coeff1 * element_y + coeff2;
-  src_xy.y = coeff3 * element_x + coeff4 * element_y + coeff5;
-  int src_x = floor(src_xy.x);
-  int src_y = floor(src_xy.y); */
-
   float2 src_xy;
 
   float weight = coeff6 * element_x + coeff7 * element_y + coeff8;
@@ -579,18 +556,6 @@ void warpperspectiveNPF32Kernel(global const float* src, int src_rows, int src_c
 
   int src_x = floor(src_xy.x);
   int src_y = floor(src_xy.y);
-
-  // int weight = convert_int_sat_rte(coeff6 * element_x * AB_SCALE);
-  // weight = weight + convert_int_sat_rte((coeff7 * element_y + coeff8) * AB_SCALE);
-  // int src_x = convert_int_sat_rte((coeff1 * element_y + coeff2) * AB_SCALE) +
-  //              ROUND_DELTA;
-  // src_x = convert_int_sat_rte(coeff0 * element_x * AB_SCALE) + src_x;
-  // int src_y = convert_int_sat_rte((coeff4 * element_y + coeff5) * AB_SCALE) +
-  //              ROUND_DELTA;
-  // src_y = convert_int_sat_rte(coeff3 * element_x * AB_SCALE) + src_y;
-  
-  // src_x = src_x / weight;
-  // src_y = src_y / weight;
 
   if (border_type == BORDER_CONSTANT) {
     if (src_x >= 0 && src_x < src_cols && src_y >= 0 && src_y < src_rows) {

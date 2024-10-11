@@ -24,146 +24,639 @@
 using namespace ppl::common;
 using namespace ppl::common::ocl;
 
-#define F32DIV 2
-#define F32OFFSET 1
-#define U8DIV 4
-#define U8OFFSET 2
-
-#define F32DIV_CN 2
-#define F32OFFSET_CN 1
-#define U8DIV_CN 4
-#define U8OFFSET_CN 2
-
-#define DEGREE_SRC_STRIDE_CHECK_0(T)   src_stride >= src_rows * (int)sizeof(T)
-#define DEGREE_SRC_STRIDE_CHECK_90(T)  src_stride >= src_cols * (int)sizeof(T)
-#define DEGREE_SRC_STRIDE_CHECK_180(T) src_stride >= src_rows * (int)sizeof(T)
-#define DEGREE_SRC_STRIDE_CHECK_270(T) src_stride >= src_cols * (int)sizeof(T)
-
-#define DEGREE_DST_STRIDE_CHECK_0(T)   dst_stride >= src_cols * (int)sizeof(T)
-#define DEGREE_DST_STRIDE_CHECK_90(T)  dst_stride >= src_rows * (int)sizeof(T)
-#define DEGREE_DST_STRIDE_CHECK_180(T) dst_stride >= src_cols * (int)sizeof(T)
-#define DEGREE_DST_STRIDE_CHECK_270(T) dst_stride >= src_rows * (int)sizeof(T)
-
 namespace ppl {
 namespace cv {
 namespace ocl {
 
-#define DEGREE_C1_TYPE(base_type, T, degree)                                   \
-  RetCode rotateC1##degree##base_type(                                         \
-      const cl_mem src, int src_rows, int src_cols, int src_stride,            \
-      cl_mem dst, int dst_rows, int dst_cols, int dst_stride,                  \
-      cl_command_queue queue) {                                                \
-    PPL_ASSERT(src != nullptr);                                                \
-    PPL_ASSERT(dst != nullptr);                                                \
-    PPL_ASSERT(src_rows >= 1 && src_cols >= 1);                                \
-    PPL_ASSERT(DEGREE_SRC_STRIDE_CHECK_##degree(T));                           \
-    PPL_ASSERT(DEGREE_DST_STRIDE_CHECK_##degree(T));                           \
-    PPL_ASSERT((src_rows == dst_rows && src_cols == dst_cols) ||               \
-               (src_rows == dst_cols && src_cols == dst_rows));                \
-                                                                               \
-    FrameChain* frame_chain = getSharedFrameChain();                           \
-    frame_chain->setProjectName("cv");                                         \
-    SET_PROGRAM_SOURCE(frame_chain, rotate);                                   \
-                                                                               \
-    int global_cols, global_rows;                                              \
-    global_cols = divideUp(src_cols, base_type##DIV, base_type##OFFSET);       \
-    global_rows = divideUp(src_rows, base_type##DIV, base_type##OFFSET);       \
-    size_t local_size[] = {kBlockDimX0, kBlockDimY0};                          \
-    size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};         \
-                                                                               \
-    frame_chain->setCompileOptions("-D ROTATE" #degree "_" #base_type "C1");   \
-    runOclKernel(frame_chain, "rotateC1" #degree #base_type "Kernel", 2,       \
-                 global_size, local_size, src, src_rows, src_cols, src_stride, \
-                 dst, dst_stride);                                             \
-                                                                               \
-    return RC_SUCCESS;                                                         \
-  }
+RetCode rotateC190U8(const cl_mem src, int src_rows, int src_cols,
+                     int src_stride, cl_mem dst, int dst_rows, int dst_cols,
+                     int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(src_rows >= 1 && src_cols >= 1);
+  PPL_ASSERT(src_stride >= src_cols * (int)sizeof(uchar));
+  PPL_ASSERT(dst_stride >= src_rows * (int)sizeof(uchar));
+  PPL_ASSERT((src_rows == dst_rows && src_cols == dst_cols) ||
+             (src_rows == dst_cols && src_cols == dst_rows));
 
-#define DEGREE_CN_TYPE(base_type, T, degree, channels)                                   \
-  RetCode rotateC##channels##degree##base_type(                                         \
-      const cl_mem src, int src_rows, int src_cols, int src_stride,            \
-      cl_mem dst, int dst_rows, int dst_cols, int dst_stride,                  \
-      cl_command_queue queue) {                                                \
-    PPL_ASSERT(src != nullptr);                                                \
-    PPL_ASSERT(dst != nullptr);                                                \
-    PPL_ASSERT(src_rows >= 1 && src_cols >= 1);                                \
-    PPL_ASSERT(DEGREE_SRC_STRIDE_CHECK_##degree(T));                           \
-    PPL_ASSERT(DEGREE_DST_STRIDE_CHECK_##degree(T));                           \
-    PPL_ASSERT((src_rows == dst_rows && src_cols == dst_cols) ||               \
-               (src_rows == dst_cols && src_cols == dst_rows));                \
-                                                                               \
-    FrameChain* frame_chain = getSharedFrameChain();                           \
-    frame_chain->setProjectName("cv");                                         \
-    SET_PROGRAM_SOURCE(frame_chain, rotate);                                   \
-                                                                               \
-    int global_cols, global_rows;                                              \
-    global_cols = src_cols;       \
-    global_rows = divideUp(src_rows, base_type##DIV_CN, base_type##OFFSET_CN);       \
-    size_t local_size[] = {kBlockDimX0, kBlockDimY0};                          \
-    size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};         \
-                                                                               \
-    frame_chain->setCompileOptions("-D ROTATE" #degree "_" #base_type "C" #channels);   \
-    runOclKernel(frame_chain, "rotateC"#channels #degree #base_type "Kernel", 2,       \
-                 global_size, local_size, src, src_rows, src_cols, src_stride, \
-                 dst, dst_stride);                                             \
-                                                                               \
-    return RC_SUCCESS;                                                         \
-  }
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, rotate);
 
-DEGREE_C1_TYPE(U8, uchar, 90)
-DEGREE_C1_TYPE(F32, float, 90)
-DEGREE_C1_TYPE(U8, uchar, 180)
-DEGREE_C1_TYPE(F32, float, 180)
-DEGREE_C1_TYPE(U8, uchar, 270)
-DEGREE_C1_TYPE(F32, float, 270)
+  int global_cols, global_rows;
+  global_cols = divideUp(src_cols, 4, 2);
+  global_rows = divideUp(src_rows, 4, 2);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D ROTATE90_U8C1");
+  runOclKernel(frame_chain, "rotateC190U8Kernel", 2, global_size, local_size,
+               src, src_rows, src_cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
 
-DEGREE_CN_TYPE(U8, uchar, 90, 3)
-DEGREE_CN_TYPE(F32, float, 90, 3)
-DEGREE_CN_TYPE(U8, uchar, 180, 3)
-DEGREE_CN_TYPE(F32, float, 180, 3)
-DEGREE_CN_TYPE(U8, uchar, 270, 3)
-DEGREE_CN_TYPE(F32, float, 270, 3)
+RetCode rotateC1180U8(const cl_mem src, int src_rows, int src_cols,
+                      int src_stride, cl_mem dst, int dst_rows, int dst_cols,
+                      int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(src_rows >= 1 && src_cols >= 1);
+  PPL_ASSERT(src_stride >= src_rows * (int)sizeof(uchar));
+  PPL_ASSERT(dst_stride >= src_cols * (int)sizeof(uchar));
+  PPL_ASSERT((src_rows == dst_rows && src_cols == dst_cols) ||
+             (src_rows == dst_cols && src_cols == dst_rows));
 
-DEGREE_CN_TYPE(U8, uchar, 90, 4)
-DEGREE_CN_TYPE(F32, float, 90, 4)
-DEGREE_CN_TYPE(U8, uchar, 180, 4)
-DEGREE_CN_TYPE(F32, float, 180, 4)
-DEGREE_CN_TYPE(U8, uchar, 270, 4)
-DEGREE_CN_TYPE(F32, float, 270, 4)
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, rotate);
 
-#define DEGREE_TYPE_TEMPLATE(base_type, channels, T)                        \
-  template <>                                                               \
-  RetCode Rotate<T, channels>(                                              \
-      cl_command_queue queue, int inHeight, int inWidth, int inWidthStride, \
-      const cl_mem inData, int outHeight, int outWidth, int outWidthStride, \
-      cl_mem outData, int degree) {                                         \
-    inWidthStride *= sizeof(T);                                             \
-    outWidthStride *= sizeof(T);                                            \
-    PPL_ASSERT(degree == 90 || degree == 180 || degree == 270);             \
-    RetCode code;                                                           \
-    if (degree == 90)                                                       \
-      code = rotateC##channels##90##base_type(                              \
-          inData, inHeight, inWidth, inWidthStride, outData, outHeight,     \
-          outWidth, outWidthStride, queue);                                 \
-    else if (degree == 180)                                                 \
-      code = rotateC##channels##180##base_type(                             \
-          inData, inHeight, inWidth, inWidthStride, outData, outHeight,     \
-          outWidth, outWidthStride, queue);                                 \
-    else if (degree == 270)                                                 \
-      code = rotateC##channels##270##base_type(                             \
-          inData, inHeight, inWidth, inWidthStride, outData, outHeight,     \
-          outWidth, outWidthStride, queue);                                 \
-                                                                            \
-    return code;                                                            \
-  }
+  int global_cols, global_rows;
+  global_cols = divideUp(src_cols, 4, 2);
+  global_rows = divideUp(src_rows, 4, 2);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D ROTATE180_U8C1");
+  runOclKernel(frame_chain, "rotateC1180U8Kernel", 2, global_size, local_size,
+               src, src_rows, src_cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
 
-DEGREE_TYPE_TEMPLATE(U8, 1, uchar)
-DEGREE_TYPE_TEMPLATE(F32, 1, float)
-DEGREE_TYPE_TEMPLATE(U8, 3, uchar)
-DEGREE_TYPE_TEMPLATE(F32, 3, float)
-DEGREE_TYPE_TEMPLATE(U8, 4, uchar)
-DEGREE_TYPE_TEMPLATE(F32, 4, float)
+RetCode rotateC1270U8(const cl_mem src, int src_rows, int src_cols,
+                      int src_stride, cl_mem dst, int dst_rows, int dst_cols,
+                      int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(src_rows >= 1 && src_cols >= 1);
+  PPL_ASSERT(src_stride >= src_cols * (int)sizeof(uchar));
+  PPL_ASSERT(dst_stride >= src_rows * (int)sizeof(uchar));
+  PPL_ASSERT((src_rows == dst_rows && src_cols == dst_cols) ||
+             (src_rows == dst_cols && src_cols == dst_rows));
 
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, rotate);
+
+  int global_cols, global_rows;
+  global_cols = divideUp(src_cols, 4, 2);
+  global_rows = divideUp(src_rows, 4, 2);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D ROTATE270_U8C1");
+  runOclKernel(frame_chain, "rotateC1270U8Kernel", 2, global_size, local_size,
+               src, src_rows, src_cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
+
+RetCode rotateC190F32(const cl_mem src, int src_rows, int src_cols,
+                      int src_stride, cl_mem dst, int dst_rows, int dst_cols,
+                      int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(src_rows >= 1 && src_cols >= 1);
+  PPL_ASSERT(src_stride >= src_cols * (int)sizeof(float));
+  PPL_ASSERT(dst_stride >= src_rows * (int)sizeof(float));
+  PPL_ASSERT((src_rows == dst_rows && src_cols == dst_cols) ||
+             (src_rows == dst_cols && src_cols == dst_rows));
+
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, rotate);
+
+  int global_cols, global_rows;
+  global_cols = divideUp(src_cols, 2, 1);
+  global_rows = divideUp(src_rows, 2, 1);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D ROTATE90_F32C1");
+  runOclKernel(frame_chain, "rotateC190F32Kernel", 2, global_size, local_size,
+               src, src_rows, src_cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
+
+RetCode rotateC1180F32(const cl_mem src, int src_rows, int src_cols,
+                       int src_stride, cl_mem dst, int dst_rows, int dst_cols,
+                       int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(src_rows >= 1 && src_cols >= 1);
+  PPL_ASSERT(src_stride >= src_rows * (int)sizeof(float));
+  PPL_ASSERT(dst_stride >= src_cols * (int)sizeof(float));
+  PPL_ASSERT((src_rows == dst_rows && src_cols == dst_cols) ||
+             (src_rows == dst_cols && src_cols == dst_rows));
+
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, rotate);
+
+  int global_cols, global_rows;
+  global_cols = divideUp(src_cols, 2, 1);
+  global_rows = divideUp(src_rows, 2, 1);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D ROTATE180_F32C1");
+  runOclKernel(frame_chain, "rotateC1180F32Kernel", 2, global_size, local_size,
+               src, src_rows, src_cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
+
+RetCode rotateC1270F32(const cl_mem src, int src_rows, int src_cols,
+                       int src_stride, cl_mem dst, int dst_rows, int dst_cols,
+                       int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(src_rows >= 1 && src_cols >= 1);
+  PPL_ASSERT(src_stride >= src_cols * (int)sizeof(float));
+  PPL_ASSERT(dst_stride >= src_rows * (int)sizeof(float));
+  PPL_ASSERT((src_rows == dst_rows && src_cols == dst_cols) ||
+             (src_rows == dst_cols && src_cols == dst_rows));
+
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, rotate);
+
+  int global_cols, global_rows;
+  global_cols = divideUp(src_cols, 2, 1);
+  global_rows = divideUp(src_rows, 2, 1);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D ROTATE270_F32C1");
+  runOclKernel(frame_chain, "rotateC1270F32Kernel", 2, global_size, local_size,
+               src, src_rows, src_cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
+
+RetCode rotateC390U8(const cl_mem src, int src_rows, int src_cols,
+                     int src_stride, cl_mem dst, int dst_rows, int dst_cols,
+                     int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(src_rows >= 1 && src_cols >= 1);
+  PPL_ASSERT(src_stride >= src_cols * (int)sizeof(uchar));
+  PPL_ASSERT(dst_stride >= src_rows * (int)sizeof(uchar));
+  PPL_ASSERT((src_rows == dst_rows && src_cols == dst_cols) ||
+             (src_rows == dst_cols && src_cols == dst_rows));
+
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, rotate);
+
+  int global_cols, global_rows;
+  global_cols = src_cols;
+  global_rows = divideUp(src_rows, 4, 2);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D ROTATE90_U8C3");
+  runOclKernel(frame_chain, "rotateC390U8Kernel", 2, global_size, local_size,
+               src, src_rows, src_cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
+
+RetCode rotateC3180U8(const cl_mem src, int src_rows, int src_cols,
+                      int src_stride, cl_mem dst, int dst_rows, int dst_cols,
+                      int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(src_rows >= 1 && src_cols >= 1);
+  PPL_ASSERT(src_stride >= src_rows * (int)sizeof(uchar));
+  PPL_ASSERT(dst_stride >= src_cols * (int)sizeof(uchar));
+  PPL_ASSERT((src_rows == dst_rows && src_cols == dst_cols) ||
+             (src_rows == dst_cols && src_cols == dst_rows));
+
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, rotate);
+
+  int global_cols, global_rows;
+  global_cols = src_cols;
+  global_rows = divideUp(src_rows, 4, 2);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D ROTATE180_U8C3");
+  runOclKernel(frame_chain, "rotateC3180U8Kernel", 2, global_size, local_size,
+               src, src_rows, src_cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
+
+RetCode rotateC3270U8(const cl_mem src, int src_rows, int src_cols,
+                      int src_stride, cl_mem dst, int dst_rows, int dst_cols,
+                      int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(src_rows >= 1 && src_cols >= 1);
+  PPL_ASSERT(src_stride >= src_cols * (int)sizeof(uchar));
+  PPL_ASSERT(dst_stride >= src_rows * (int)sizeof(uchar));
+  PPL_ASSERT((src_rows == dst_rows && src_cols == dst_cols) ||
+             (src_rows == dst_cols && src_cols == dst_rows));
+
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, rotate);
+
+  int global_cols, global_rows;
+  global_cols = src_cols;
+  global_rows = divideUp(src_rows, 4, 2);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D ROTATE270_U8C3");
+  runOclKernel(frame_chain, "rotateC3270U8Kernel", 2, global_size, local_size,
+               src, src_rows, src_cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
+
+RetCode rotateC390F32(const cl_mem src, int src_rows, int src_cols,
+                      int src_stride, cl_mem dst, int dst_rows, int dst_cols,
+                      int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(src_rows >= 1 && src_cols >= 1);
+  PPL_ASSERT(src_stride >= src_cols * (int)sizeof(float));
+  PPL_ASSERT(dst_stride >= src_rows * (int)sizeof(float));
+  PPL_ASSERT((src_rows == dst_rows && src_cols == dst_cols) ||
+             (src_rows == dst_cols && src_cols == dst_rows));
+
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, rotate);
+
+  int global_cols, global_rows;
+  global_cols = src_cols;
+  global_rows = divideUp(src_rows, 2, 1);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D ROTATE90_F32C3");
+  runOclKernel(frame_chain, "rotateC390F32Kernel", 2, global_size, local_size,
+               src, src_rows, src_cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
+
+RetCode rotateC3180F32(const cl_mem src, int src_rows, int src_cols,
+                       int src_stride, cl_mem dst, int dst_rows, int dst_cols,
+                       int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(src_rows >= 1 && src_cols >= 1);
+  PPL_ASSERT(src_stride >= src_rows * (int)sizeof(float));
+  PPL_ASSERT(dst_stride >= src_cols * (int)sizeof(float));
+  PPL_ASSERT((src_rows == dst_rows && src_cols == dst_cols) ||
+             (src_rows == dst_cols && src_cols == dst_rows));
+
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, rotate);
+
+  int global_cols, global_rows;
+  global_cols = src_cols;
+  global_rows = divideUp(src_rows, 2, 1);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D ROTATE180_F32C3");
+  runOclKernel(frame_chain, "rotateC3180F32Kernel", 2, global_size, local_size,
+               src, src_rows, src_cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
+
+RetCode rotateC3270F32(const cl_mem src, int src_rows, int src_cols,
+                       int src_stride, cl_mem dst, int dst_rows, int dst_cols,
+                       int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(src_rows >= 1 && src_cols >= 1);
+  PPL_ASSERT(src_stride >= src_cols * (int)sizeof(float));
+  PPL_ASSERT(dst_stride >= src_rows * (int)sizeof(float));
+  PPL_ASSERT((src_rows == dst_rows && src_cols == dst_cols) ||
+             (src_rows == dst_cols && src_cols == dst_rows));
+
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, rotate);
+
+  int global_cols, global_rows;
+  global_cols = src_cols;
+  global_rows = divideUp(src_rows, 2, 1);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D ROTATE270_F32C3");
+  runOclKernel(frame_chain, "rotateC3270F32Kernel", 2, global_size, local_size,
+               src, src_rows, src_cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
+
+RetCode rotateC490U8(const cl_mem src, int src_rows, int src_cols,
+                     int src_stride, cl_mem dst, int dst_rows, int dst_cols,
+                     int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(src_rows >= 1 && src_cols >= 1);
+  PPL_ASSERT(src_stride >= src_cols * (int)sizeof(uchar));
+  PPL_ASSERT(dst_stride >= src_rows * (int)sizeof(uchar));
+  PPL_ASSERT((src_rows == dst_rows && src_cols == dst_cols) ||
+             (src_rows == dst_cols && src_cols == dst_rows));
+
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, rotate);
+
+  int global_cols, global_rows;
+  global_cols = src_cols;
+  global_rows = divideUp(src_rows, 4, 2);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D ROTATE90_U8C4");
+  runOclKernel(frame_chain, "rotateC490U8Kernel", 2, global_size, local_size,
+               src, src_rows, src_cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
+
+RetCode rotateC4180U8(const cl_mem src, int src_rows, int src_cols,
+                      int src_stride, cl_mem dst, int dst_rows, int dst_cols,
+                      int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(src_rows >= 1 && src_cols >= 1);
+  PPL_ASSERT(src_stride >= src_rows * (int)sizeof(uchar));
+  PPL_ASSERT(dst_stride >= src_cols * (int)sizeof(uchar));
+  PPL_ASSERT((src_rows == dst_rows && src_cols == dst_cols) ||
+             (src_rows == dst_cols && src_cols == dst_rows));
+
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, rotate);
+
+  int global_cols, global_rows;
+  global_cols = src_cols;
+  global_rows = divideUp(src_rows, 4, 2);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D ROTATE180_U8C4");
+  runOclKernel(frame_chain, "rotateC4180U8Kernel", 2, global_size, local_size,
+               src, src_rows, src_cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
+
+RetCode rotateC4270U8(const cl_mem src, int src_rows, int src_cols,
+                      int src_stride, cl_mem dst, int dst_rows, int dst_cols,
+                      int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(src_rows >= 1 && src_cols >= 1);
+  PPL_ASSERT(src_stride >= src_cols * (int)sizeof(uchar));
+  PPL_ASSERT(dst_stride >= src_rows * (int)sizeof(uchar));
+  PPL_ASSERT((src_rows == dst_rows && src_cols == dst_cols) ||
+             (src_rows == dst_cols && src_cols == dst_rows));
+
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, rotate);
+
+  int global_cols, global_rows;
+  global_cols = src_cols;
+  global_rows = divideUp(src_rows, 4, 2);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D ROTATE270_U8C4");
+  runOclKernel(frame_chain, "rotateC4270U8Kernel", 2, global_size, local_size,
+               src, src_rows, src_cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
+
+RetCode rotateC490F32(const cl_mem src, int src_rows, int src_cols,
+                      int src_stride, cl_mem dst, int dst_rows, int dst_cols,
+                      int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(src_rows >= 1 && src_cols >= 1);
+  PPL_ASSERT(src_stride >= src_cols * (int)sizeof(float));
+  PPL_ASSERT(dst_stride >= src_rows * (int)sizeof(float));
+  PPL_ASSERT((src_rows == dst_rows && src_cols == dst_cols) ||
+             (src_rows == dst_cols && src_cols == dst_rows));
+
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, rotate);
+
+  int global_cols, global_rows;
+  global_cols = src_cols;
+  global_rows = divideUp(src_rows, 2, 1);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D ROTATE90_F32C4");
+  runOclKernel(frame_chain, "rotateC490F32Kernel", 2, global_size, local_size,
+               src, src_rows, src_cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
+
+RetCode rotateC4180F32(const cl_mem src, int src_rows, int src_cols,
+                       int src_stride, cl_mem dst, int dst_rows, int dst_cols,
+                       int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(src_rows >= 1 && src_cols >= 1);
+  PPL_ASSERT(src_stride >= src_rows * (int)sizeof(float));
+  PPL_ASSERT(dst_stride >= src_cols * (int)sizeof(float));
+  PPL_ASSERT((src_rows == dst_rows && src_cols == dst_cols) ||
+             (src_rows == dst_cols && src_cols == dst_rows));
+
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, rotate);
+
+  int global_cols, global_rows;
+  global_cols = src_cols;
+  global_rows = divideUp(src_rows, 2, 1);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D ROTATE180_F32C4");
+  runOclKernel(frame_chain, "rotateC4180F32Kernel", 2, global_size, local_size,
+               src, src_rows, src_cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
+
+RetCode rotateC4270F32(const cl_mem src, int src_rows, int src_cols,
+                       int src_stride, cl_mem dst, int dst_rows, int dst_cols,
+                       int dst_stride, cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(src_rows >= 1 && src_cols >= 1);
+  PPL_ASSERT(src_stride >= src_cols * (int)sizeof(float));
+  PPL_ASSERT(dst_stride >= src_rows * (int)sizeof(float));
+  PPL_ASSERT((src_rows == dst_rows && src_cols == dst_cols) ||
+             (src_rows == dst_cols && src_cols == dst_rows));
+
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, rotate);
+
+  int global_cols, global_rows;
+  global_cols = src_cols;
+  global_rows = divideUp(src_rows, 2, 1);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  size_t global_size[] = {(size_t)global_cols, (size_t)global_rows};
+  frame_chain->setCompileOptions("-D ROTATE270_F32C4");
+  runOclKernel(frame_chain, "rotateC4270F32Kernel", 2, global_size, local_size,
+               src, src_rows, src_cols, src_stride, dst, dst_stride);
+  return RC_SUCCESS;
+}
+
+template <>
+RetCode Rotate<uchar, 1>(cl_command_queue queue,
+                         int inHeight,
+                         int inWidth,
+                         int inWidthStride,
+                         const cl_mem inData,
+                         int outHeight,
+                         int outWidth,
+                         int outWidthStride,
+                         cl_mem outData,
+                         int degree) {
+  inWidthStride *= sizeof(uchar);
+  outWidthStride *= sizeof(uchar);
+  PPL_ASSERT(degree == 90 || degree == 180 || degree == 270);
+  RetCode code;
+  if (degree == 90)
+    code = rotateC190U8(inData, inHeight, inWidth, inWidthStride, outData,
+                        outHeight, outWidth, outWidthStride, queue);
+  else if (degree == 180)
+    code = rotateC1180U8(inData, inHeight, inWidth, inWidthStride, outData,
+                         outHeight, outWidth, outWidthStride, queue);
+  else if (degree == 270)
+    code = rotateC1270U8(inData, inHeight, inWidth, inWidthStride, outData,
+                         outHeight, outWidth, outWidthStride, queue);
+  return code;
+}
+
+template <>
+RetCode Rotate<uchar, 3>(cl_command_queue queue,
+                         int inHeight,
+                         int inWidth,
+                         int inWidthStride,
+                         const cl_mem inData,
+                         int outHeight,
+                         int outWidth,
+                         int outWidthStride,
+                         cl_mem outData,
+                         int degree) {
+  inWidthStride *= sizeof(uchar);
+  outWidthStride *= sizeof(uchar);
+  PPL_ASSERT(degree == 90 || degree == 180 || degree == 270);
+  RetCode code;
+  if (degree == 90)
+    code = rotateC390U8(inData, inHeight, inWidth, inWidthStride, outData,
+                        outHeight, outWidth, outWidthStride, queue);
+  else if (degree == 180)
+    code = rotateC3180U8(inData, inHeight, inWidth, inWidthStride, outData,
+                         outHeight, outWidth, outWidthStride, queue);
+  else if (degree == 270)
+    code = rotateC3270U8(inData, inHeight, inWidth, inWidthStride, outData,
+                         outHeight, outWidth, outWidthStride, queue);
+  return code;
+}
+
+template <>
+RetCode Rotate<uchar, 4>(cl_command_queue queue,
+                         int inHeight,
+                         int inWidth,
+                         int inWidthStride,
+                         const cl_mem inData,
+                         int outHeight,
+                         int outWidth,
+                         int outWidthStride,
+                         cl_mem outData,
+                         int degree) {
+  inWidthStride *= sizeof(uchar);
+  outWidthStride *= sizeof(uchar);
+  PPL_ASSERT(degree == 90 || degree == 180 || degree == 270);
+  RetCode code;
+  if (degree == 90)
+    code = rotateC490U8(inData, inHeight, inWidth, inWidthStride, outData,
+                        outHeight, outWidth, outWidthStride, queue);
+  else if (degree == 180)
+    code = rotateC4180U8(inData, inHeight, inWidth, inWidthStride, outData,
+                         outHeight, outWidth, outWidthStride, queue);
+  else if (degree == 270)
+    code = rotateC4270U8(inData, inHeight, inWidth, inWidthStride, outData,
+                         outHeight, outWidth, outWidthStride, queue);
+  return code;
+}
+
+template <>
+RetCode Rotate<float, 1>(cl_command_queue queue,
+                         int inHeight,
+                         int inWidth,
+                         int inWidthStride,
+                         const cl_mem inData,
+                         int outHeight,
+                         int outWidth,
+                         int outWidthStride,
+                         cl_mem outData,
+                         int degree) {
+  inWidthStride *= sizeof(float);
+  outWidthStride *= sizeof(float);
+  PPL_ASSERT(degree == 90 || degree == 180 || degree == 270);
+  RetCode code;
+  if (degree == 90)
+    code = rotateC190F32(inData, inHeight, inWidth, inWidthStride, outData,
+                         outHeight, outWidth, outWidthStride, queue);
+  else if (degree == 180)
+    code = rotateC1180F32(inData, inHeight, inWidth, inWidthStride, outData,
+                          outHeight, outWidth, outWidthStride, queue);
+  else if (degree == 270)
+    code = rotateC1270F32(inData, inHeight, inWidth, inWidthStride, outData,
+                          outHeight, outWidth, outWidthStride, queue);
+  return code;
+}
+
+template <>
+RetCode Rotate<float, 3>(cl_command_queue queue,
+                         int inHeight,
+                         int inWidth,
+                         int inWidthStride,
+                         const cl_mem inData,
+                         int outHeight,
+                         int outWidth,
+                         int outWidthStride,
+                         cl_mem outData,
+                         int degree) {
+  inWidthStride *= sizeof(float);
+  outWidthStride *= sizeof(float);
+  PPL_ASSERT(degree == 90 || degree == 180 || degree == 270);
+  RetCode code;
+  if (degree == 90)
+    code = rotateC390F32(inData, inHeight, inWidth, inWidthStride, outData,
+                         outHeight, outWidth, outWidthStride, queue);
+  else if (degree == 180)
+    code = rotateC3180F32(inData, inHeight, inWidth, inWidthStride, outData,
+                          outHeight, outWidth, outWidthStride, queue);
+  else if (degree == 270)
+    code = rotateC3270F32(inData, inHeight, inWidth, inWidthStride, outData,
+                          outHeight, outWidth, outWidthStride, queue);
+  return code;
+}
+
+template <>
+RetCode Rotate<float, 4>(cl_command_queue queue,
+                         int inHeight,
+                         int inWidth,
+                         int inWidthStride,
+                         const cl_mem inData,
+                         int outHeight,
+                         int outWidth,
+                         int outWidthStride,
+                         cl_mem outData,
+                         int degree) {
+  inWidthStride *= sizeof(float);
+  outWidthStride *= sizeof(float);
+  PPL_ASSERT(degree == 90 || degree == 180 || degree == 270);
+  RetCode code;
+  if (degree == 90)
+    code = rotateC490F32(inData, inHeight, inWidth, inWidthStride, outData,
+                         outHeight, outWidth, outWidthStride, queue);
+  else if (degree == 180)
+    code = rotateC4180F32(inData, inHeight, inWidth, inWidthStride, outData,
+                          outHeight, outWidth, outWidthStride, queue);
+  else if (degree == 270)
+    code = rotateC4270F32(inData, inHeight, inWidth, inWidthStride, outData,
+                          outHeight, outWidth, outWidthStride, queue);
+  return code;
+}
 
 }  // namespace ocl
 }  // namespace cv
