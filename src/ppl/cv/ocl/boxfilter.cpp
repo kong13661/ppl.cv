@@ -27,230 +27,920 @@
 using namespace ppl::common;
 using namespace ppl::common::ocl;
 
-#define F32DIV 2
-#define F32OFFSET 1
-#define U8DIV 2
-#define U8OFFSET 1
-
-#define F32DIV_CN 1
-#define F32OFFSET_CN 0
-#define U8DIV_CN 1
-#define U8OFFSET_CN 0
-
 namespace ppl {
 namespace cv {
 namespace ocl {
 
-
-#define RUN_KERNEL(interpolate, base_type)                                    \
-  {                                                                           \
-    float weight = 1.0f / (float)(ksize_x * ksize_y);                      \
-    size_t local_size[] = {kBlockDimX0, kBlockDimY0};                         \
-    global_cols = divideUp(cols, F32##DIV, F32##OFFSET);                      \
-    global_rows = divideUp(rows, F32##DIV, F32##OFFSET);                      \
-    global_size[0] = (size_t)global_cols;                                     \
-    global_size[1] = (size_t)global_rows;                                     \
-    frame_chain->setCompileOptions("-D BOXFILTER_" #base_type "1C");       \
-    cl_mem buffer;                                                                         \
-    GpuMemoryBlock buffer_block;                                                           \
-    buffer_block.offset = 0;\
-    if (memoryPoolUsed()) {                                                                \
-      pplOclMalloc(buffer_block, rows * (int)sizeof(float) *                               \
-                   cols);                                          \
-      buffer = buffer_block.data;                                                          \
-    }                                                                                      \
-    else {                                                                                 \
-      cl_int error_code = 0;                                                               \
-      buffer = clCreateBuffer(                                                             \
-          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,            \
-          rows * (int)sizeof(float) * cols,                                                \
-          NULL, &error_code);                                                              \
-      CHECK_ERROR(error_code, clCreateBuffer);                                             \
-    }                                                                                      \
-    runOclKernel(frame_chain,                                                 \
-                 "boxfilter" #base_type "F32" #interpolate "C1Kernel", 2,  \
-                 global_size, local_size, src, 0, rows, cols, ksize_x >> 1,     \
-                 src_stride, buffer, rows*(int)sizeof(float), ksize_x & 1, 0, weight, (int)buffer_block.offset);  \
-                                                                              \
-    global_cols = divideUp(cols, base_type##DIV, base_type##OFFSET);          \
-    global_rows = divideUp(rows, base_type##DIV, base_type##OFFSET);          \
-    global_size[0] = (size_t)global_rows;                                     \
-    global_size[1] = (size_t)global_cols;                                     \
-    runOclKernel(frame_chain,                                                 \
-                 "boxfilter"                                               \
-                 "F32" #base_type #interpolate "C1Kernel",                    \
-                 2, global_size, local_size, buffer, (int)buffer_block.offset, cols, rows, ksize_y >> 1,     \
-                 rows*(int)sizeof(float), dst, dst_stride, ksize_y & 1, (int)normalize, weight, 0);            \
-    if (memoryPoolUsed()) {                                                                \
-      pplOclFree(buffer_block);                                                            \
-    }                                                                                      \
-    else {                                                                                 \
-      clReleaseMemObject(buffer);                                                          \
-    }                                                                                      \
+RetCode boxfilterC1U8(const cl_mem src, int rows, int cols, int src_stride,
+                      int ksize_x, int ksize_y, bool normalize, cl_mem dst,
+                      int dst_stride, BorderType border_type,
+                      cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(rows >= 1 && cols >= 1);
+  PPL_ASSERT(ksize_x > 0);
+  PPL_ASSERT(ksize_y > 0);
+  PPL_ASSERT(src_stride >= cols * (int)sizeof(uchar));
+  PPL_ASSERT(dst_stride >= cols * (int)sizeof(uchar));
+  PPL_ASSERT(border_type == BORDER_REPLICATE || border_type == BORDER_REFLECT ||
+             border_type == BORDER_REFLECT_101)
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, boxfilter);
+  int global_cols, global_rows;
+  size_t global_size[2];
+  if (border_type == BORDER_REPLICATE) {
+    float weight = 1.0f / (float)(ksize_x * ksize_y);
+    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+    global_cols = divideUp(cols, 2, 1);
+    global_rows = divideUp(rows, 2, 1);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D BOXFILTER_interpolateReplicateBorderU8C1");
+    cl_mem buffer;
+    GpuMemoryBlock buffer_block;
+    buffer_block.offset = 0;
+    if (memoryPoolUsed()) {
+      pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols);
+      buffer = buffer_block.data;
+    }
+    else {
+      cl_int error_code = 0;
+      buffer = clCreateBuffer(
+          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+          rows * (int)sizeof(float) * cols, NULL, &error_code);
+      CHECK_ERROR(error_code, clCreateBuffer);
+    }
+    runOclKernel(frame_chain,
+                 "boxfilterU8F32interpolateReplicateBorderC1Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, ksize_x >> 1,
+                 src_stride, buffer, rows * (int)sizeof(float), ksize_x & 1, 0,
+                 weight, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 2, 1);
+    global_rows = divideUp(rows, 2, 1);
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "boxfilterF32U8interpolateReplicateBorderC1Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, ksize_y >> 1, rows * (int)sizeof(float), dst,
+                 dst_stride, ksize_y & 1, (int)normalize, weight, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
   }
-
-#define BOXFILTER_C1_TYPE(base_type, T)                                    \
-  RetCode boxfilterC1##base_type(                                          \
-      const cl_mem src, int rows, int cols, int src_stride, int ksize_x, int ksize_y,        \
-      bool normalize, cl_mem dst, int dst_stride, BorderType border_type,        \
-      cl_command_queue queue) {                           \
-    PPL_ASSERT(src != nullptr);                                               \
-    PPL_ASSERT(dst != nullptr);                                               \
-    PPL_ASSERT(rows >= 1 && cols >= 1);                                       \
-  PPL_ASSERT(ksize_x > 0);\
-  PPL_ASSERT(ksize_y > 0);\
-    PPL_ASSERT(src_stride >= cols * (int)sizeof(T));                          \
-    PPL_ASSERT(dst_stride >= cols * (int)sizeof(T));                          \
-    PPL_ASSERT(border_type == BORDER_REPLICATE ||                             \
-               border_type == BORDER_REFLECT ||                               \
-               border_type == BORDER_REFLECT_101)                             \
-    FrameChain* frame_chain = getSharedFrameChain();                          \
-    frame_chain->setProjectName("cv");                                        \
-    SET_PROGRAM_SOURCE(frame_chain, boxfilter);                            \
-                                                                              \
-    int global_cols, global_rows;                                             \
-    size_t global_size[2];                                                    \
-                                                                              \
-    if (border_type == BORDER_REPLICATE)                                      \
-      RUN_KERNEL(interpolateReplicateBorder, base_type)                       \
-    else if (border_type == BORDER_REFLECT)                                   \
-      RUN_KERNEL(interpolateReflectBorder, base_type)                         \
-    else if (border_type == BORDER_REFLECT_101)                               \
-      RUN_KERNEL(interpolateReflect101Border, base_type)                      \
-    return RC_SUCCESS;                                                        \
+  else if (border_type == BORDER_REFLECT) {
+    float weight = 1.0f / (float)(ksize_x * ksize_y);
+    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+    global_cols = divideUp(cols, 2, 1);
+    global_rows = divideUp(rows, 2, 1);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions("-D BOXFILTER_interpolateReflectBorderU8C1");
+    cl_mem buffer;
+    GpuMemoryBlock buffer_block;
+    buffer_block.offset = 0;
+    if (memoryPoolUsed()) {
+      pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols);
+      buffer = buffer_block.data;
+    }
+    else {
+      cl_int error_code = 0;
+      buffer = clCreateBuffer(
+          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+          rows * (int)sizeof(float) * cols, NULL, &error_code);
+      CHECK_ERROR(error_code, clCreateBuffer);
+    }
+    runOclKernel(frame_chain, "boxfilterU8F32interpolateReflectBorderC1Kernel",
+                 2, global_size, local_size, src, 0, rows, cols, ksize_x >> 1,
+                 src_stride, buffer, rows * (int)sizeof(float), ksize_x & 1, 0,
+                 weight, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 2, 1);
+    global_rows = divideUp(rows, 2, 1);
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain, "boxfilterF32U8interpolateReflectBorderC1Kernel",
+                 2, global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, ksize_y >> 1, rows * (int)sizeof(float), dst,
+                 dst_stride, ksize_y & 1, (int)normalize, weight, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
   }
-
-#define RUN_KERNEL_CN(interpolate, base_type, channels)                        \
-  {                                                                            \
-    float weight = 1.0f / (float)(ksize_x * ksize_y);                          \
-    size_t local_size[] = {kBlockDimX0, kBlockDimY0};                          \
-    global_cols = cols;                                                        \
-    global_rows = divideUp(rows, F32##DIV_CN, F32##OFFSET_CN);                 \
-    global_size[0] = (size_t)global_cols;                                      \
-    global_size[1] = (size_t)global_rows;                                      \
-    frame_chain->setCompileOptions("-D BOXFILTER_" #base_type "C" #channels);  \
-    runOclKernel(                                                              \
-        frame_chain,                                                           \
-        "boxfilter" #base_type "F32" #interpolate "C" #channels "Kernel", 2,   \
-        global_size, local_size, src, 0, rows, cols, ksize_x >> 1, src_stride,    \
-        buffer, rows * (int)sizeof(float) * channels, ksize_x & 1, 0, weight, (int)buffer_block.offset); \
-                                                                               \
-    global_cols = divideUp(cols, base_type##DIV_CN, base_type##OFFSET_CN);     \
-    global_rows = rows;                                                        \
-    global_size[0] = (size_t)global_rows;                                      \
-    global_size[1] = (size_t)global_cols;                                      \
-    runOclKernel(frame_chain,                                                  \
-                 "boxfilter"                                                   \
-                 "F32" #base_type #interpolate "C" #channels "Kernel",         \
-                 2, global_size, local_size, buffer, (int)buffer_block.offset, cols, rows, ksize_y >> 1, \
-                 rows * (int)sizeof(float) * channels, dst, dst_stride,        \
-                 ksize_y & 1, (int)normalize, weight, 0);                         \
-    if (memoryPoolUsed()) {                                                     \
-      pplOclFree(buffer_block);                                                 \
-    }                                                                           \
-    else {                                                                      \
-      clReleaseMemObject(buffer);                                               \
-    }                                                                           \
+  else if (border_type == BORDER_REFLECT_101) {
+    float weight = 1.0f / (float)(ksize_x * ksize_y);
+    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+    global_cols = divideUp(cols, 2, 1);
+    global_rows = divideUp(rows, 2, 1);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D BOXFILTER_interpolateReflect101BorderU8C1");
+    cl_mem buffer;
+    GpuMemoryBlock buffer_block;
+    buffer_block.offset = 0;
+    if (memoryPoolUsed()) {
+      pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols);
+      buffer = buffer_block.data;
+    }
+    else {
+      cl_int error_code = 0;
+      buffer = clCreateBuffer(
+          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+          rows * (int)sizeof(float) * cols, NULL, &error_code);
+      CHECK_ERROR(error_code, clCreateBuffer);
+    }
+    runOclKernel(frame_chain,
+                 "boxfilterU8F32interpolateReflect101BorderC1Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, ksize_x >> 1,
+                 src_stride, buffer, rows * (int)sizeof(float), ksize_x & 1, 0,
+                 weight, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 2, 1);
+    global_rows = divideUp(rows, 2, 1);
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "boxfilterF32U8interpolateReflect101BorderC1Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, ksize_y >> 1, rows * (int)sizeof(float), dst,
+                 dst_stride, ksize_y & 1, (int)normalize, weight, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
   }
+  return RC_SUCCESS;
+}
 
-#define BOXFILTER_CN_TYPE(base_type, T, channels)                       \
-  RetCode boxfilterC##channels##base_type(                              \
-      const cl_mem src, int rows, int cols, int src_stride, int ksize_x, int ksize_y,     \
-      bool normalize, cl_mem dst, int dst_stride, BorderType border_type,     \
-      cl_command_queue queue) {                        \
-    PPL_ASSERT(src != nullptr);                                            \
-    PPL_ASSERT(dst != nullptr);                                            \
-    PPL_ASSERT(rows >= 1 && cols >= 1);                                    \
-    PPL_ASSERT(src_stride >= cols * (int)sizeof(T) * channels);            \
-    PPL_ASSERT(dst_stride >= cols * (int)sizeof(T) * channels);            \
-  PPL_ASSERT(ksize_x > 0);\
-  PPL_ASSERT(ksize_y > 0);\
-    PPL_ASSERT(border_type == BORDER_REPLICATE ||                          \
-               border_type == BORDER_REFLECT ||                            \
-               border_type == BORDER_REFLECT_101)                          \
-    FrameChain* frame_chain = getSharedFrameChain();                       \
-    frame_chain->setProjectName("cv");                                     \
-    SET_PROGRAM_SOURCE(frame_chain, boxfilter);                         \
-                                                                           \
-    int global_cols, global_rows;                                          \
-    size_t global_size[2];                                                 \
-\
-    cl_mem buffer;                                                                    \
-    GpuMemoryBlock buffer_block;                                                      \
-    buffer_block.offset = 0;\
-    if (memoryPoolUsed()) {                                                           \
-      pplOclMalloc(buffer_block, rows * (int)sizeof(float) *                          \
-                   cols * channels);                                     \
-      buffer = buffer_block.data;                                                     \
-    }                                                                                 \
-    else {                                                                            \
-      cl_int error_code = 0;                                                          \
-      buffer = clCreateBuffer(                                                        \
-          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,       \
-          rows * (int)sizeof(float) * cols * channels,           \
-          NULL, &error_code);                                                         \
-      CHECK_ERROR(error_code, clCreateBuffer);                                        \
-    }                                                                                 \
-                                                                           \
-    if (border_type == BORDER_REPLICATE)                                   \
-      RUN_KERNEL_CN(interpolateReplicateBorder, base_type, channels)       \
-    else if (border_type == BORDER_REFLECT)                                \
-      RUN_KERNEL_CN(interpolateReflectBorder, base_type, channels)         \
-    else if (border_type == BORDER_REFLECT_101)                            \
-      RUN_KERNEL_CN(interpolateReflect101Border, base_type, channels)      \
-    return RC_SUCCESS;                                                     \
+RetCode boxfilterC1F32(const cl_mem src, int rows, int cols, int src_stride,
+                       int ksize_x, int ksize_y, bool normalize, cl_mem dst,
+                       int dst_stride, BorderType border_type,
+                       cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(rows >= 1 && cols >= 1);
+  PPL_ASSERT(ksize_x > 0);
+  PPL_ASSERT(ksize_y > 0);
+  PPL_ASSERT(src_stride >= cols * (int)sizeof(float));
+  PPL_ASSERT(dst_stride >= cols * (int)sizeof(float));
+  PPL_ASSERT(border_type == BORDER_REPLICATE || border_type == BORDER_REFLECT ||
+             border_type == BORDER_REFLECT_101)
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, boxfilter);
+  int global_cols, global_rows;
+  size_t global_size[2];
+  if (border_type == BORDER_REPLICATE) {
+    float weight = 1.0f / (float)(ksize_x * ksize_y);
+    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+    global_cols = divideUp(cols, 2, 1);
+    global_rows = divideUp(rows, 2, 1);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D BOXFILTER_interpolateReplicateBorderF32C1");
+    cl_mem buffer;
+    GpuMemoryBlock buffer_block;
+    buffer_block.offset = 0;
+    if (memoryPoolUsed()) {
+      pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols);
+      buffer = buffer_block.data;
+    }
+    else {
+      cl_int error_code = 0;
+      buffer = clCreateBuffer(
+          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+          rows * (int)sizeof(float) * cols, NULL, &error_code);
+      CHECK_ERROR(error_code, clCreateBuffer);
+    }
+    runOclKernel(frame_chain,
+                 "boxfilterF32F32interpolateReplicateBorderC1Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, ksize_x >> 1,
+                 src_stride, buffer, rows * (int)sizeof(float), ksize_x & 1, 0,
+                 weight, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 2, 1);
+    global_rows = divideUp(rows, 2, 1);
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "boxfilterF32F32interpolateReplicateBorderC1Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, ksize_y >> 1, rows * (int)sizeof(float), dst,
+                 dst_stride, ksize_y & 1, (int)normalize, weight, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
   }
-
-BOXFILTER_C1_TYPE(U8, uchar)
-BOXFILTER_C1_TYPE(F32, float)
-BOXFILTER_CN_TYPE(U8, uchar, 3)
-BOXFILTER_CN_TYPE(F32, float, 3)
-BOXFILTER_CN_TYPE(U8, uchar, 4)
-BOXFILTER_CN_TYPE(F32, float, 4)
-// BOXFILTER_CN_TYPE(F32, float, 3)
-// BOXFILTER_CN_TYPE(F32, float, 4)
-
-#define BOXFILTER_TYPE_C1_TEMPLATE(base_type, T)                           \
-  template <>                                                                 \
-  RetCode BoxFilter<T, 1>(cl_command_queue queue,      \
-                             int height, int width, int inWidthStride,        \
-                             const cl_mem inData, int ksize_x, int ksize_y, bool normalize,     \
-                             int outWidthStride, cl_mem outData, \
-                             BorderType border_type) {                        \
-    inWidthStride *= sizeof(T);                                               \
-    outWidthStride *= sizeof(T);                                              \
-    RetCode code = boxfilterC1##base_type(                                 \
-        inData, height, width, inWidthStride, ksize_x, ksize_y, normalize, outData,          \
-        outWidthStride, border_type, queue);                  \
-                                                                              \
-    return code;                                                              \
+  else if (border_type == BORDER_REFLECT) {
+    float weight = 1.0f / (float)(ksize_x * ksize_y);
+    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+    global_cols = divideUp(cols, 2, 1);
+    global_rows = divideUp(rows, 2, 1);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D BOXFILTER_interpolateReflectBorderF32C1");
+    cl_mem buffer;
+    GpuMemoryBlock buffer_block;
+    buffer_block.offset = 0;
+    if (memoryPoolUsed()) {
+      pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols);
+      buffer = buffer_block.data;
+    }
+    else {
+      cl_int error_code = 0;
+      buffer = clCreateBuffer(
+          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+          rows * (int)sizeof(float) * cols, NULL, &error_code);
+      CHECK_ERROR(error_code, clCreateBuffer);
+    }
+    runOclKernel(frame_chain, "boxfilterF32F32interpolateReflectBorderC1Kernel",
+                 2, global_size, local_size, src, 0, rows, cols, ksize_x >> 1,
+                 src_stride, buffer, rows * (int)sizeof(float), ksize_x & 1, 0,
+                 weight, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 2, 1);
+    global_rows = divideUp(rows, 2, 1);
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain, "boxfilterF32F32interpolateReflectBorderC1Kernel",
+                 2, global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, ksize_y >> 1, rows * (int)sizeof(float), dst,
+                 dst_stride, ksize_y & 1, (int)normalize, weight, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
   }
-
-#define BOXFILTER_TYPE_CN_TEMPLATE(base_type, T, channels)            \
-  template <>                                                            \
-  RetCode BoxFilter<T, channels>(                                     \
-      cl_command_queue queue, int height, int width, \
-      int inWidthStride, const cl_mem inData, int ksize_x, int ksize_y, bool normalize,    \
-      int outWidthStride, cl_mem outData,                   \
-      BorderType border_type) {                                          \
-    inWidthStride *= sizeof(T);                                          \
-    outWidthStride *= sizeof(T);                                         \
-    RetCode code = boxfilterC##channels##base_type(                   \
-        inData, height, width, inWidthStride, ksize_x, ksize_y, normalize, outData,     \
-        outWidthStride, border_type, queue);             \
-                                                                         \
-    return code;                                                         \
+  else if (border_type == BORDER_REFLECT_101) {
+    float weight = 1.0f / (float)(ksize_x * ksize_y);
+    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+    global_cols = divideUp(cols, 2, 1);
+    global_rows = divideUp(rows, 2, 1);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D BOXFILTER_interpolateReflect101BorderF32C1");
+    cl_mem buffer;
+    GpuMemoryBlock buffer_block;
+    buffer_block.offset = 0;
+    if (memoryPoolUsed()) {
+      pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols);
+      buffer = buffer_block.data;
+    }
+    else {
+      cl_int error_code = 0;
+      buffer = clCreateBuffer(
+          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+          rows * (int)sizeof(float) * cols, NULL, &error_code);
+      CHECK_ERROR(error_code, clCreateBuffer);
+    }
+    runOclKernel(frame_chain,
+                 "boxfilterF32F32interpolateReflect101BorderC1Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, ksize_x >> 1,
+                 src_stride, buffer, rows * (int)sizeof(float), ksize_x & 1, 0,
+                 weight, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 2, 1);
+    global_rows = divideUp(rows, 2, 1);
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "boxfilterF32F32interpolateReflect101BorderC1Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, ksize_y >> 1, rows * (int)sizeof(float), dst,
+                 dst_stride, ksize_y & 1, (int)normalize, weight, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
   }
+  return RC_SUCCESS;
+}
 
-BOXFILTER_TYPE_C1_TEMPLATE(U8, uchar)
-BOXFILTER_TYPE_C1_TEMPLATE(F32, float)
-BOXFILTER_TYPE_CN_TEMPLATE(U8, uchar, 3)
-BOXFILTER_TYPE_CN_TEMPLATE(F32, float, 3)
-BOXFILTER_TYPE_CN_TEMPLATE(U8, uchar, 4)
-BOXFILTER_TYPE_CN_TEMPLATE(F32, float, 4)
-// BOXFILTER_TYPE_CN_TEMPLATE(F32, float, 3)
-// BOXFILTER_TYPE_CN_TEMPLATE(F32, float, 4)
+RetCode boxfilterC3U8(const cl_mem src, int rows, int cols, int src_stride,
+                      int ksize_x, int ksize_y, bool normalize, cl_mem dst,
+                      int dst_stride, BorderType border_type,
+                      cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(rows >= 1 && cols >= 1);
+  PPL_ASSERT(src_stride >= cols * (int)sizeof(uchar) * 3);
+  PPL_ASSERT(dst_stride >= cols * (int)sizeof(uchar) * 3);
+  PPL_ASSERT(ksize_x > 0);
+  PPL_ASSERT(ksize_y > 0);
+  PPL_ASSERT(border_type == BORDER_REPLICATE || border_type == BORDER_REFLECT ||
+             border_type == BORDER_REFLECT_101)
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, boxfilter);
+  int global_cols, global_rows;
+  size_t global_size[2];
+  cl_mem buffer;
+  GpuMemoryBlock buffer_block;
+  buffer_block.offset = 0;
+  if (memoryPoolUsed()) {
+    pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols * 3);
+    buffer = buffer_block.data;
+  }
+  else {
+    cl_int error_code = 0;
+    buffer = clCreateBuffer(
+        frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+        rows * (int)sizeof(float) * cols * 3, NULL, &error_code);
+    CHECK_ERROR(error_code, clCreateBuffer);
+  }
+  if (border_type == BORDER_REPLICATE) {
+    float weight = 1.0f / (float)(ksize_x * ksize_y);
+    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D BOXFILTER_interpolateReplicateBorderU8C3");
+    runOclKernel(frame_chain,
+                 "boxfilterU8F32interpolateReplicateBorderC3Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, ksize_x >> 1,
+                 src_stride, buffer, rows * (int)sizeof(float) * 3, ksize_x & 1,
+                 0, weight, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 1, 0);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "boxfilterF32U8interpolateReplicateBorderC3Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, ksize_y >> 1, rows * (int)sizeof(float) * 3, dst,
+                 dst_stride, ksize_y & 1, (int)normalize, weight, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  else if (border_type == BORDER_REFLECT) {
+    float weight = 1.0f / (float)(ksize_x * ksize_y);
+    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions("-D BOXFILTER_interpolateReflectBorderU8C3");
+    runOclKernel(frame_chain, "boxfilterU8F32interpolateReflectBorderC3Kernel",
+                 2, global_size, local_size, src, 0, rows, cols, ksize_x >> 1,
+                 src_stride, buffer, rows * (int)sizeof(float) * 3, ksize_x & 1,
+                 0, weight, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 1, 0);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain, "boxfilterF32U8interpolateReflectBorderC3Kernel",
+                 2, global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, ksize_y >> 1, rows * (int)sizeof(float) * 3, dst,
+                 dst_stride, ksize_y & 1, (int)normalize, weight, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  else if (border_type == BORDER_REFLECT_101) {
+    float weight = 1.0f / (float)(ksize_x * ksize_y);
+    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D BOXFILTER_interpolateReflect101BorderU8C3");
+    runOclKernel(frame_chain,
+                 "boxfilterU8F32interpolateReflect101BorderC3Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, ksize_x >> 1,
+                 src_stride, buffer, rows * (int)sizeof(float) * 3, ksize_x & 1,
+                 0, weight, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 1, 0);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "boxfilterF32U8interpolateReflect101BorderC3Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, ksize_y >> 1, rows * (int)sizeof(float) * 3, dst,
+                 dst_stride, ksize_y & 1, (int)normalize, weight, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  return RC_SUCCESS;
+}
 
+RetCode boxfilterC3F32(const cl_mem src, int rows, int cols, int src_stride,
+                       int ksize_x, int ksize_y, bool normalize, cl_mem dst,
+                       int dst_stride, BorderType border_type,
+                       cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(rows >= 1 && cols >= 1);
+  PPL_ASSERT(src_stride >= cols * (int)sizeof(float) * 3);
+  PPL_ASSERT(dst_stride >= cols * (int)sizeof(float) * 3);
+  PPL_ASSERT(ksize_x > 0);
+  PPL_ASSERT(ksize_y > 0);
+  PPL_ASSERT(border_type == BORDER_REPLICATE || border_type == BORDER_REFLECT ||
+             border_type == BORDER_REFLECT_101)
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, boxfilter);
+  int global_cols, global_rows;
+  size_t global_size[2];
+  cl_mem buffer;
+  GpuMemoryBlock buffer_block;
+  buffer_block.offset = 0;
+  if (memoryPoolUsed()) {
+    pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols * 3);
+    buffer = buffer_block.data;
+  }
+  else {
+    cl_int error_code = 0;
+    buffer = clCreateBuffer(
+        frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+        rows * (int)sizeof(float) * cols * 3, NULL, &error_code);
+    CHECK_ERROR(error_code, clCreateBuffer);
+  }
+  if (border_type == BORDER_REPLICATE) {
+    float weight = 1.0f / (float)(ksize_x * ksize_y);
+    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D BOXFILTER_interpolateReplicateBorderF32C3");
+    runOclKernel(frame_chain,
+                 "boxfilterF32F32interpolateReplicateBorderC3Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, ksize_x >> 1,
+                 src_stride, buffer, rows * (int)sizeof(float) * 3, ksize_x & 1,
+                 0, weight, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 1, 0);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "boxfilterF32F32interpolateReplicateBorderC3Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, ksize_y >> 1, rows * (int)sizeof(float) * 3, dst,
+                 dst_stride, ksize_y & 1, (int)normalize, weight, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  else if (border_type == BORDER_REFLECT) {
+    float weight = 1.0f / (float)(ksize_x * ksize_y);
+    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D BOXFILTER_interpolateReflectBorderF32C3");
+    runOclKernel(frame_chain, "boxfilterF32F32interpolateReflectBorderC3Kernel",
+                 2, global_size, local_size, src, 0, rows, cols, ksize_x >> 1,
+                 src_stride, buffer, rows * (int)sizeof(float) * 3, ksize_x & 1,
+                 0, weight, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 1, 0);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain, "boxfilterF32F32interpolateReflectBorderC3Kernel",
+                 2, global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, ksize_y >> 1, rows * (int)sizeof(float) * 3, dst,
+                 dst_stride, ksize_y & 1, (int)normalize, weight, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  else if (border_type == BORDER_REFLECT_101) {
+    float weight = 1.0f / (float)(ksize_x * ksize_y);
+    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D BOXFILTER_interpolateReflect101BorderF32C3");
+    runOclKernel(frame_chain,
+                 "boxfilterF32F32interpolateReflect101BorderC3Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, ksize_x >> 1,
+                 src_stride, buffer, rows * (int)sizeof(float) * 3, ksize_x & 1,
+                 0, weight, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 1, 0);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "boxfilterF32F32interpolateReflect101BorderC3Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, ksize_y >> 1, rows * (int)sizeof(float) * 3, dst,
+                 dst_stride, ksize_y & 1, (int)normalize, weight, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  return RC_SUCCESS;
+}
+
+RetCode boxfilterC4U8(const cl_mem src, int rows, int cols, int src_stride,
+                      int ksize_x, int ksize_y, bool normalize, cl_mem dst,
+                      int dst_stride, BorderType border_type,
+                      cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(rows >= 1 && cols >= 1);
+  PPL_ASSERT(src_stride >= cols * (int)sizeof(uchar) * 4);
+  PPL_ASSERT(dst_stride >= cols * (int)sizeof(uchar) * 4);
+  PPL_ASSERT(ksize_x > 0);
+  PPL_ASSERT(ksize_y > 0);
+  PPL_ASSERT(border_type == BORDER_REPLICATE || border_type == BORDER_REFLECT ||
+             border_type == BORDER_REFLECT_101)
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, boxfilter);
+  int global_cols, global_rows;
+  size_t global_size[2];
+  cl_mem buffer;
+  GpuMemoryBlock buffer_block;
+  buffer_block.offset = 0;
+  if (memoryPoolUsed()) {
+    pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols * 4);
+    buffer = buffer_block.data;
+  }
+  else {
+    cl_int error_code = 0;
+    buffer = clCreateBuffer(
+        frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+        rows * (int)sizeof(float) * cols * 4, NULL, &error_code);
+    CHECK_ERROR(error_code, clCreateBuffer);
+  }
+  if (border_type == BORDER_REPLICATE) {
+    float weight = 1.0f / (float)(ksize_x * ksize_y);
+    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D BOXFILTER_interpolateReplicateBorderU8C4");
+    runOclKernel(frame_chain,
+                 "boxfilterU8F32interpolateReplicateBorderC4Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, ksize_x >> 1,
+                 src_stride, buffer, rows * (int)sizeof(float) * 4, ksize_x & 1,
+                 0, weight, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 1, 0);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "boxfilterF32U8interpolateReplicateBorderC4Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, ksize_y >> 1, rows * (int)sizeof(float) * 4, dst,
+                 dst_stride, ksize_y & 1, (int)normalize, weight, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  else if (border_type == BORDER_REFLECT) {
+    float weight = 1.0f / (float)(ksize_x * ksize_y);
+    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions("-D BOXFILTER_interpolateReflectBorderU8C4");
+    runOclKernel(frame_chain, "boxfilterU8F32interpolateReflectBorderC4Kernel",
+                 2, global_size, local_size, src, 0, rows, cols, ksize_x >> 1,
+                 src_stride, buffer, rows * (int)sizeof(float) * 4, ksize_x & 1,
+                 0, weight, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 1, 0);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain, "boxfilterF32U8interpolateReflectBorderC4Kernel",
+                 2, global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, ksize_y >> 1, rows * (int)sizeof(float) * 4, dst,
+                 dst_stride, ksize_y & 1, (int)normalize, weight, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  else if (border_type == BORDER_REFLECT_101) {
+    float weight = 1.0f / (float)(ksize_x * ksize_y);
+    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D BOXFILTER_interpolateReflect101BorderU8C4");
+    runOclKernel(frame_chain,
+                 "boxfilterU8F32interpolateReflect101BorderC4Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, ksize_x >> 1,
+                 src_stride, buffer, rows * (int)sizeof(float) * 4, ksize_x & 1,
+                 0, weight, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 1, 0);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "boxfilterF32U8interpolateReflect101BorderC4Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, ksize_y >> 1, rows * (int)sizeof(float) * 4, dst,
+                 dst_stride, ksize_y & 1, (int)normalize, weight, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  return RC_SUCCESS;
+}
+
+RetCode boxfilterC4F32(const cl_mem src, int rows, int cols, int src_stride,
+                       int ksize_x, int ksize_y, bool normalize, cl_mem dst,
+                       int dst_stride, BorderType border_type,
+                       cl_command_queue queue) {
+  PPL_ASSERT(src != nullptr);
+  PPL_ASSERT(dst != nullptr);
+  PPL_ASSERT(rows >= 1 && cols >= 1);
+  PPL_ASSERT(src_stride >= cols * (int)sizeof(float) * 4);
+  PPL_ASSERT(dst_stride >= cols * (int)sizeof(float) * 4);
+  PPL_ASSERT(ksize_x > 0);
+  PPL_ASSERT(ksize_y > 0);
+  PPL_ASSERT(border_type == BORDER_REPLICATE || border_type == BORDER_REFLECT ||
+             border_type == BORDER_REFLECT_101)
+  FrameChain* frame_chain = getSharedFrameChain();
+  frame_chain->setProjectName("cv");
+  SET_PROGRAM_SOURCE(frame_chain, boxfilter);
+  int global_cols, global_rows;
+  size_t global_size[2];
+  cl_mem buffer;
+  GpuMemoryBlock buffer_block;
+  buffer_block.offset = 0;
+  if (memoryPoolUsed()) {
+    pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols * 4);
+    buffer = buffer_block.data;
+  }
+  else {
+    cl_int error_code = 0;
+    buffer = clCreateBuffer(
+        frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+        rows * (int)sizeof(float) * cols * 4, NULL, &error_code);
+    CHECK_ERROR(error_code, clCreateBuffer);
+  }
+  if (border_type == BORDER_REPLICATE) {
+    float weight = 1.0f / (float)(ksize_x * ksize_y);
+    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D BOXFILTER_interpolateReplicateBorderF32C4");
+    runOclKernel(frame_chain,
+                 "boxfilterF32F32interpolateReplicateBorderC4Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, ksize_x >> 1,
+                 src_stride, buffer, rows * (int)sizeof(float) * 4, ksize_x & 1,
+                 0, weight, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 1, 0);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "boxfilterF32F32interpolateReplicateBorderC4Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, ksize_y >> 1, rows * (int)sizeof(float) * 4, dst,
+                 dst_stride, ksize_y & 1, (int)normalize, weight, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  else if (border_type == BORDER_REFLECT) {
+    float weight = 1.0f / (float)(ksize_x * ksize_y);
+    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D BOXFILTER_interpolateReflectBorderF32C4");
+    runOclKernel(frame_chain, "boxfilterF32F32interpolateReflectBorderC4Kernel",
+                 2, global_size, local_size, src, 0, rows, cols, ksize_x >> 1,
+                 src_stride, buffer, rows * (int)sizeof(float) * 4, ksize_x & 1,
+                 0, weight, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 1, 0);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain, "boxfilterF32F32interpolateReflectBorderC4Kernel",
+                 2, global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, ksize_y >> 1, rows * (int)sizeof(float) * 4, dst,
+                 dst_stride, ksize_y & 1, (int)normalize, weight, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  else if (border_type == BORDER_REFLECT_101) {
+    float weight = 1.0f / (float)(ksize_x * ksize_y);
+    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+    global_cols = cols;
+    global_rows = divideUp(rows, 1, 0);
+    global_size[0] = (size_t)global_cols;
+    global_size[1] = (size_t)global_rows;
+    frame_chain->setCompileOptions(
+        "-D BOXFILTER_interpolateReflect101BorderF32C4");
+    runOclKernel(frame_chain,
+                 "boxfilterF32F32interpolateReflect101BorderC4Kernel", 2,
+                 global_size, local_size, src, 0, rows, cols, ksize_x >> 1,
+                 src_stride, buffer, rows * (int)sizeof(float) * 4, ksize_x & 1,
+                 0, weight, (int)buffer_block.offset);
+    global_cols = divideUp(cols, 1, 0);
+    global_rows = rows;
+    global_size[0] = (size_t)global_rows;
+    global_size[1] = (size_t)global_cols;
+    runOclKernel(frame_chain,
+                 "boxfilterF32F32interpolateReflect101BorderC4Kernel", 2,
+                 global_size, local_size, buffer, (int)buffer_block.offset,
+                 cols, rows, ksize_y >> 1, rows * (int)sizeof(float) * 4, dst,
+                 dst_stride, ksize_y & 1, (int)normalize, weight, 0);
+    if (memoryPoolUsed()) {
+      pplOclFree(buffer_block);
+    }
+    else {
+      clReleaseMemObject(buffer);
+    }
+  }
+  return RC_SUCCESS;
+}
+
+template <>
+RetCode BoxFilter<uchar, 1>(cl_command_queue queue,
+                            int height,
+                            int width,
+                            int inWidthStride,
+                            const cl_mem inData,
+                            int ksize_x,
+                            int ksize_y,
+                            bool normalize,
+                            int outWidthStride,
+                            cl_mem outData,
+                            BorderType border_type) {
+  inWidthStride *= sizeof(uchar);
+  outWidthStride *= sizeof(uchar);
+  RetCode code =
+      boxfilterC1U8(inData, height, width, inWidthStride, ksize_x, ksize_y,
+                    normalize, outData, outWidthStride, border_type, queue);
+  return code;
+}
+
+template <>
+RetCode BoxFilter<float, 1>(cl_command_queue queue,
+                            int height,
+                            int width,
+                            int inWidthStride,
+                            const cl_mem inData,
+                            int ksize_x,
+                            int ksize_y,
+                            bool normalize,
+                            int outWidthStride,
+                            cl_mem outData,
+                            BorderType border_type) {
+  inWidthStride *= sizeof(float);
+  outWidthStride *= sizeof(float);
+  RetCode code =
+      boxfilterC1F32(inData, height, width, inWidthStride, ksize_x, ksize_y,
+                     normalize, outData, outWidthStride, border_type, queue);
+  return code;
+}
+
+template <>
+RetCode BoxFilter<uchar, 3>(cl_command_queue queue,
+                            int height,
+                            int width,
+                            int inWidthStride,
+                            const cl_mem inData,
+                            int ksize_x,
+                            int ksize_y,
+                            bool normalize,
+                            int outWidthStride,
+                            cl_mem outData,
+                            BorderType border_type) {
+  inWidthStride *= sizeof(uchar);
+  outWidthStride *= sizeof(uchar);
+  RetCode code =
+      boxfilterC3U8(inData, height, width, inWidthStride, ksize_x, ksize_y,
+                    normalize, outData, outWidthStride, border_type, queue);
+  return code;
+}
+
+template <>
+RetCode BoxFilter<float, 3>(cl_command_queue queue,
+                            int height,
+                            int width,
+                            int inWidthStride,
+                            const cl_mem inData,
+                            int ksize_x,
+                            int ksize_y,
+                            bool normalize,
+                            int outWidthStride,
+                            cl_mem outData,
+                            BorderType border_type) {
+  inWidthStride *= sizeof(float);
+  outWidthStride *= sizeof(float);
+  RetCode code =
+      boxfilterC3F32(inData, height, width, inWidthStride, ksize_x, ksize_y,
+                     normalize, outData, outWidthStride, border_type, queue);
+  return code;
+}
+
+template <>
+RetCode BoxFilter<uchar, 4>(cl_command_queue queue,
+                            int height,
+                            int width,
+                            int inWidthStride,
+                            const cl_mem inData,
+                            int ksize_x,
+                            int ksize_y,
+                            bool normalize,
+                            int outWidthStride,
+                            cl_mem outData,
+                            BorderType border_type) {
+  inWidthStride *= sizeof(uchar);
+  outWidthStride *= sizeof(uchar);
+  RetCode code =
+      boxfilterC4U8(inData, height, width, inWidthStride, ksize_x, ksize_y,
+                    normalize, outData, outWidthStride, border_type, queue);
+  return code;
+}
+
+template <>
+RetCode BoxFilter<float, 4>(cl_command_queue queue,
+                            int height,
+                            int width,
+                            int inWidthStride,
+                            const cl_mem inData,
+                            int ksize_x,
+                            int ksize_y,
+                            bool normalize,
+                            int outWidthStride,
+                            cl_mem outData,
+                            BorderType border_type) {
+  inWidthStride *= sizeof(float);
+  outWidthStride *= sizeof(float);
+  RetCode code =
+      boxfilterC4F32(inData, height, width, inWidthStride, ksize_x, ksize_y,
+                     normalize, outData, outWidthStride, border_type, queue);
+  return code;
+}
 
 }  // namespace ocl
 }  // namespace cv

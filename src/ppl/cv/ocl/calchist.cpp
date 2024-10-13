@@ -59,12 +59,12 @@ RetCode calchist(const cl_mem src, int rows, int cols,
     global_size[1] = 1;
 
     if (mask == nullptr){
-      frame_chain->setCompileOptions("-D U8 -D U81D");
+      frame_chain->setCompileOptions("-D CALCHIST_UNMAKED_ALIGHED");
       runOclKernel(frame_chain, "unmaskCalchistKernel0", 2, global_size, local_size, src,
                   columns, dst);
     } 
     else {
-      frame_chain->setCompileOptions("-D U8 -D U81D");
+      frame_chain->setCompileOptions("-D CALCHIST_MAKED_ALIGHED");
       runOclKernel(frame_chain, "maskCalchistKernel0", 2, global_size, local_size, src,
                   mask, columns, dst);
     }
@@ -78,12 +78,12 @@ RetCode calchist(const cl_mem src, int rows, int cols,
                          global_size[1]);
 
     if (mask == nullptr){
-      frame_chain->setCompileOptions("-D U8 -D U8UNALIGNED");
+      frame_chain->setCompileOptions("-D CALCHIST_UNMAKED_UNALIGHED");
       runOclKernel(frame_chain, "unmaskCalchistKernel1", 2, global_size, local_size, src,
                   src_stride, rows, columns, dst);
     }
     else {
-      frame_chain->setCompileOptions("-D U8 -D U8UNALIGNED");
+      frame_chain->setCompileOptions("-D CALCHIST_MAKED_UNALIGHED");
       runOclKernel(frame_chain, "maskCalchistKernel1", 2, global_size, local_size, src,
                   src_stride, mask, mask_stride, rows, columns, dst);
     }
