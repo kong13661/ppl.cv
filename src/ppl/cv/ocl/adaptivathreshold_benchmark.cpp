@@ -63,8 +63,8 @@ void BM_AdaptiveThreshold_ppl_ocl(benchmark::State &state) {
                                     src.data, 0, NULL, NULL);
   CHECK_ERROR(error_code, clEnqueueWriteBuffer);
 
-  size_t size_width = size.width * channels * sizeof(float);
-  size_t ceiled_volume = ppl::cv::ocl::ceil2DVolume(size_width, size.height);
+  size_t size_width = width * sizeof(float);
+  size_t ceiled_volume = ppl::cv::ocl::ceil2DVolume(size_width, height);
   ppl::cv::ocl::activateGpuMemoryPool(ceiled_volume + ppl::cv::ocl::ceil1DVolume(ksize * sizeof(float)));
 
   int iterations = 100;
