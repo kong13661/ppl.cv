@@ -27,78 +27,73 @@ namespace cv {
 namespace ocl {
 
 /**
- * @brief Computes an absolute value of each matrix element.
- * @tparam T The data type, used for both source image and destination image,
- *         currently only signed char and float are supported.
- * @tparam channels The number of channels of input image, 1, 3 and 4 are
+ * @brief Calculates the integral of an image.
+ * @tparam Tsrc The data type of input image, currently only uint8_t(uchar) and
+ *         float are supported.
+ * @tparam Tdst The data type of output image, currently only int and float are
  *         supported.
- * @param queue          opencl command queue.
- * @param height         input&output image's height.
- * @param width          input&output image's width.
- * @param inWidthStride  input image's width stride, which is not less than
- *                       `width * channels`.
- * @param inData         input image data, it should be a buffer object.
- * @param outWidthStride the width stride of output image, similar to
- *                       inWidthStride.
- * @param outData        output image data, similar to inData.
+ * @tparam channels The number of channels of input image, only 1 is supported.
+ * @param stream           cuda stream object.
+ * @param inHeight         input image's height.
+ * @param inWidth          input image's width.
+ * @param inWidthStride    input image's width stride, it is `width * channels`
+ *                         for cudaMalloc() allocated data, `pitch / sizeof(T)`
+ *                         for 2D cudaMallocPitch() allocated data.
+ * @param inData           input image data.
+ * @param outHeight        output image's height.
+ * @param outWidth         output image's width.
+ * @param outWidthStride   the width stride of output image, similar to
+ *                         inWidthStride.
+ * @param outData          output image data.
  * @return The execution status, succeeds or fails with an error code.
- * @note For best performance, rows of input&output aligned with 64 bits are
- *       recommended.
+ * @note 1 For best performance, a 2D array allocated by cudaMallocPitch() is
+ *         recommended.
+ *       2 There are 2 implementation, in version 1 the input&output have the
+ *         same size; in version 2 outHeight = inHeight + 1 && outWidth =
+ *         inWidth + 1. Version 2 is compatible with integral() in OpenCV 4.1.
+ *         outHeight&outWidth decides which implementation will be run.
  * @warning All parameters must be valid, or undefined behaviour may occur.
  * @remark The fllowing table show which data type and channels are supported.
  * <table>
- * <tr><th>Data type(T)<th>channels
- * <tr><td>signed char<td>1
- * <tr><td>signed char<td>3
- * <tr><td>signed char<td>4
- * <tr><td>float<td>1
- * <tr><td>float<td>3
- * <tr><td>float<td>4
+ * <tr><th>Data type(Tsrc)<th>Data type(Tdst)<th>channels
+ * <tr><td>uint8_t(uchar)<td>int<td>1
+ * <tr><td>float<td>float<td>1
  * </table>
- * <table>
  * <caption align="left">Requirements</caption>
- * <tr><td>OpenCL platforms supported <td>OpenCL 1.2
- * <tr><td>Header files <td>#include "ppl/cv/ocl/abs.h"
- * <tr><td>Project      <td>ppl.cv
+ * <tr><td>CUDA platforms supported <td>CUDA 7.0
+ * <tr><td>Header files  <td> #include "ppl/cv/cuda/integral.h"
+ * <tr><td>Project       <td> ppl.cv
  * </table>
  * @since ppl.cv-v1.0.0
  * ###Example
  * @code{.cpp}
- * #include "ppl/cv/ocl/abs.h"
- * #include "ppl/common/oclcommon.h"
- *
- * using namespace ppl::common::ocl;
- * using namespace ppl::cv::ocl;
+ * #include "ppl/cv/cuda/integral.h"
+ * using namespace ppl::cv::cuda;
  *
  * int main(int argc, char** argv) {
- *   int width    = 640;
- *   int height   = 480;
- *   int channels = 3;
+ *   int width  = 640;
+ *   int height = 480;
+ *   int channels = 1;
  *
- *   createSharedFrameChain(false);
- *   cl_context context = getSharedFrameChain()->getContext();
- *   cl_command_queue queue = getSharedFrameChain()->getQueue();
+ *   float* gpu_input;
+ *   float* gpu_output;
+ *   size_t input_pitch, output_pitch;
+ *   cudaMallocPitch(&gpu_input, &input_pitch,
+ *                   width * channels * sizeof(float), height);
+ *   cudaMallocPitch(&gpu_output, &output_pitch,
+ *                   width * channels * sizeof(float), height);
  *
- *   cl_int error_code = 0;
- *   int data_size = height * width * channels * sizeof(float);
- *   float* input = (float*)malloc(data_size);
- *   float* output = (float*)malloc(data_size);
- *   cl_mem gpu_input = clCreateBuffer(context, CL_MEM_READ_ONLY, data_size,
- *                                     NULL, &error_code);
- *   cl_mem gpu_output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, data_size,
- *                                      NULL, &error_code);
- *   error_code = clEnqueueWriteBuffer(queue, gpu_input, CL_FALSE, 0,
- *                                     data_size, input, 0, NULL, NULL);
+ *   cudaStream_t stream;
+ *   cudaStreamCreate(&stream);
+ *   Integral<float, float, 1>(stream, height, width,
+ *                             input_pitch / sizeof(float), gpu_input,
+ *                             height, width, output_pitch / sizeof(float),
+ *                             gpu_output);
+ *   cudaStreamSynchronize(stream);
+ *   cudaStreamDestroy(stream);
  *
- *   Abs<float, 3>(queue, height, width, width * channels, gpu_input,
- *                 width * channels, gpu_output);
- *   error_code = clEnqueueReadBuffer(queue, gpu_output, CL_TRUE, 0, data_size,
- *                                    output, 0, NULL, NULL);
- *
- *   free(input);
- *   free(output);
- *   clReleaseMemObject(gpu_input);
- *   clReleaseMemObject(gpu_output);
+ *   cudaFree(gpu_input);
+ *   cudaFree(gpu_output);
  *
  *   return 0;
  * }

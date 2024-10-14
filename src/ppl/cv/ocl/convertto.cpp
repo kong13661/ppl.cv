@@ -169,7 +169,7 @@ RetCode converttoU8_2_U8(const cl_mem src0, int rows, int cols, int channels,
 }
 
 template <>
-RetCode Convertto<float, float, 1>(cl_command_queue queue,
+RetCode ConvertTo<float, float, 1>(cl_command_queue queue,
                                    int height,
                                    int width,
                                    int inWidthStride0,
@@ -187,7 +187,7 @@ RetCode Convertto<float, float, 1>(cl_command_queue queue,
 }
 
 template <>
-RetCode Convertto<float, float, 3>(cl_command_queue queue,
+RetCode ConvertTo<float, float, 3>(cl_command_queue queue,
                                    int height,
                                    int width,
                                    int inWidthStride0,
@@ -205,7 +205,7 @@ RetCode Convertto<float, float, 3>(cl_command_queue queue,
 }
 
 template <>
-RetCode Convertto<float, float, 4>(cl_command_queue queue,
+RetCode ConvertTo<float, float, 4>(cl_command_queue queue,
                                    int height,
                                    int width,
                                    int inWidthStride0,
@@ -223,7 +223,7 @@ RetCode Convertto<float, float, 4>(cl_command_queue queue,
 }
 
 template <>
-RetCode Convertto<uchar, float, 1>(cl_command_queue queue,
+RetCode ConvertTo<uchar, float, 1>(cl_command_queue queue,
                                    int height,
                                    int width,
                                    int inWidthStride0,
@@ -240,7 +240,7 @@ RetCode Convertto<uchar, float, 1>(cl_command_queue queue,
   return code;
 }
 template <>
-RetCode Convertto<uchar, float, 3>(cl_command_queue queue,
+RetCode ConvertTo<uchar, float, 3>(cl_command_queue queue,
                                    int height,
                                    int width,
                                    int inWidthStride0,
@@ -257,7 +257,7 @@ RetCode Convertto<uchar, float, 3>(cl_command_queue queue,
   return code;
 }
 template <>
-RetCode Convertto<uchar, float, 4>(cl_command_queue queue,
+RetCode ConvertTo<uchar, float, 4>(cl_command_queue queue,
                                    int height,
                                    int width,
                                    int inWidthStride0,
@@ -275,7 +275,7 @@ RetCode Convertto<uchar, float, 4>(cl_command_queue queue,
 }
 
 template <>
-RetCode Convertto<float, uchar, 1>(cl_command_queue queue,
+RetCode ConvertTo<float, uchar, 1>(cl_command_queue queue,
                                    int height,
                                    int width,
                                    int inWidthStride0,
@@ -293,7 +293,7 @@ RetCode Convertto<float, uchar, 1>(cl_command_queue queue,
 }
 
 template <>
-RetCode Convertto<float, uchar, 3>(cl_command_queue queue,
+RetCode ConvertTo<float, uchar, 3>(cl_command_queue queue,
                                    int height,
                                    int width,
                                    int inWidthStride0,
@@ -311,7 +311,7 @@ RetCode Convertto<float, uchar, 3>(cl_command_queue queue,
 }
 
 template <>
-RetCode Convertto<float, uchar, 4>(cl_command_queue queue,
+RetCode ConvertTo<float, uchar, 4>(cl_command_queue queue,
                                    int height,
                                    int width,
                                    int inWidthStride0,
@@ -329,7 +329,7 @@ RetCode Convertto<float, uchar, 4>(cl_command_queue queue,
 }
 
 template <>
-RetCode Convertto<uchar, uchar, 1>(cl_command_queue queue,
+RetCode ConvertTo<uchar, uchar, 1>(cl_command_queue queue,
                                    int height,
                                    int width,
                                    int inWidthStride0,
@@ -346,7 +346,7 @@ RetCode Convertto<uchar, uchar, 1>(cl_command_queue queue,
 }
 
 template <>
-RetCode Convertto<uchar, uchar, 3>(cl_command_queue queue,
+RetCode ConvertTo<uchar, uchar, 3>(cl_command_queue queue,
                                    int height,
                                    int width,
                                    int inWidthStride0,
@@ -363,7 +363,7 @@ RetCode Convertto<uchar, uchar, 3>(cl_command_queue queue,
 }
 
 template <>
-RetCode Convertto<uchar, uchar, 4>(cl_command_queue queue,
+RetCode ConvertTo<uchar, uchar, 4>(cl_command_queue queue,
                                    int height,
                                    int width,
                                    int inWidthStride0,

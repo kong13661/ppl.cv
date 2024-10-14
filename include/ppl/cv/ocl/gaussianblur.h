@@ -27,30 +27,39 @@ namespace cv {
 namespace ocl {
 
 /**
- * @brief Computes an absolute value of each matrix element.
- * @tparam T The data type, used for both source image and destination image,
- *         currently only signed char and float are supported.
- * @tparam channels The number of channels of input image, 1, 3 and 4 are
- *         supported.
+ * @brief Blurs an image using a Gaussian filter.
+ * @tparam T The data type of input and output image, currently only
+ *         uint8_t(uchar) and float are supported.
+ * @tparam channels The number of channels of input&output image, 1, 3 and 4
+ *         are supported.
  * @param queue          opencl command queue.
  * @param height         input&output image's height.
  * @param width          input&output image's width.
  * @param inWidthStride  input image's width stride, which is not less than
- *                       `width * channels`.
+ *                       `width * channels * sizeof(T)`.
  * @param inData         input image data, it should be a buffer object.
+ * @param ksize          the length of kernel in X&Y direction, which must be
+                         positive and odd.
+ * @param sigma          Gaussian kernel standard deviation in X&Y direction.
  * @param outWidthStride the width stride of output image, similar to
  *                       inWidthStride.
- * @param outData        output image data, similar to inData.
+ * @param outData        output image data, it should be a buffer object.
+ * @param border_type    ways to deal with border. BORDER_REPLICATE,
+ *                       BORDER_REFLECT, BORDER_REFLECT_101 and BORDER_DEFAULT
+ *                       are supported now.
  * @return The execution status, succeeds or fails with an error code.
- * @note For best performance, rows of input&output aligned with 64 bits are
- *       recommended.
+ * @note 1 For best performance, this function
+ *         need a memory pool to store the intermediate result, which is not
+ *         less than ppl::cv::ocl::ceil2DVolume(width * channels * sizeof(float),
+ *         height) * 2 + ppl::cv::ocl::ceil1DVolume(ksize * sizeof(float)).
+ *       2 The anchor is at the kernel center.
  * @warning All parameters must be valid, or undefined behaviour may occur.
  * @remark The fllowing table show which data type and channels are supported.
  * <table>
  * <tr><th>Data type(T)<th>channels
- * <tr><td>signed char<td>1
- * <tr><td>signed char<td>3
- * <tr><td>signed char<td>4
+ * <tr><td>uint8_t(uchar)<td>1
+ * <tr><td>uint8_t(uchar)<td>3
+ * <tr><td>uint8_t(uchar)<td>4
  * <tr><td>float<td>1
  * <tr><td>float<td>3
  * <tr><td>float<td>4
@@ -58,26 +67,28 @@ namespace ocl {
  * <table>
  * <caption align="left">Requirements</caption>
  * <tr><td>OpenCL platforms supported <td>OpenCL 1.2
- * <tr><td>Header files <td>#include "ppl/cv/ocl/abs.h"
+ * <tr><td>Header files <td>#include "ppl/cv/ocl/gaussianblur.h"
  * <tr><td>Project      <td>ppl.cv
  * </table>
  * @since ppl.cv-v1.0.0
  * ###Example
  * @code{.cpp}
- * #include "ppl/cv/ocl/abs.h"
+ * #include "ppl/cv/ocl/gaussianblur.h"
  * #include "ppl/common/oclcommon.h"
- *
- * using namespace ppl::common::ocl;
  * using namespace ppl::cv::ocl;
  *
  * int main(int argc, char** argv) {
  *   int width    = 640;
  *   int height   = 480;
  *   int channels = 3;
+ *   int ksize = 3;
+ *   float sigma = 0.1;
  *
  *   createSharedFrameChain(false);
  *   cl_context context = getSharedFrameChain()->getContext();
  *   cl_command_queue queue = getSharedFrameChain()->getQueue();
+ *   activateGpuMemoryPool(ceiled_volume + ppl::cv::ocl::ceil1DVolume(ksize * sizeof(float)));
+ *
  *
  *   cl_int error_code = 0;
  *   int data_size = height * width * channels * sizeof(float);
@@ -90,8 +101,9 @@ namespace ocl {
  *   error_code = clEnqueueWriteBuffer(queue, gpu_input, CL_FALSE, 0,
  *                                     data_size, input, 0, NULL, NULL);
  *
- *   Abs<float, 3>(queue, height, width, width * channels, gpu_input,
- *                 width * channels, gpu_output);
+ *   GaussianBlur<T, channels>(
+ *     queue, height, width, width * channels, gpu_input, ksize,
+ *     sigma, width * channels, gpu_output);
  *   error_code = clEnqueueReadBuffer(queue, gpu_output, CL_TRUE, 0, data_size,
  *                                    output, 0, NULL, NULL);
  *
@@ -99,6 +111,7 @@ namespace ocl {
  *   free(output);
  *   clReleaseMemObject(gpu_input);
  *   clReleaseMemObject(gpu_output);
+ *   shutDownGpuMemoryPool();
  *
  *   return 0;
  * }

@@ -28,7 +28,7 @@
 #define BASE 50
 
 using Parameters = std::tuple<int, int, cv::Size>;
-inline std::string convertToStringConvertto(const Parameters& parameters) {
+inline std::string convertToStringConvertTo(const Parameters& parameters) {
   std::ostringstream formatted;
 
   int int_alpha = std::get<0>(parameters);
@@ -125,10 +125,10 @@ bool PplCvOclConvertToTest<Tsrc, Tdst, channels>::apply() {
 
   src.convertTo(cv_dst, cv_dst.type(), alpha, beta);
 
-  ppl::cv::ocl::Convertto<Tsrc, Tdst, channels>(queue, src.rows, src.cols,
+  ppl::cv::ocl::ConvertTo<Tsrc, Tdst, channels>(queue, src.rows, src.cols,
       src.step / sizeof(Tsrc), gpu_src, dst.step / sizeof(Tdst), gpu_dst, alpha, beta);
 
-  ppl::cv::ocl::Convertto<Tsrc, Tdst, channels>(queue, size.height, size.width,
+  ppl::cv::ocl::ConvertTo<Tsrc, Tdst, channels>(queue, size.height, size.width,
       size.width * channels, gpu_input, size.width * channels, gpu_output, alpha, beta);
   error_code = clEnqueueReadBuffer(queue, gpu_dst, CL_TRUE, 0, dst_bytes0,
                                    dst.data, 0, NULL, NULL);
@@ -188,7 +188,7 @@ INSTANTIATE_TEST_CASE_P(IsEqual,                                               \
   [](const testing::TestParamInfo<                                             \
       PplCvOclConvertToTest ## Tsrc ## To ## Tdst ## channels::ParamType>&     \
         info) {                                                                \
-    return convertToStringConvertto(info.param);                               \
+    return convertToStringConvertTo(info.param);                               \
   }                                                                            \
 );
 

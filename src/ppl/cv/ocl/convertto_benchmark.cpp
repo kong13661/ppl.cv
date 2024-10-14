@@ -64,7 +64,7 @@ void BM_ConvertTo_ppl_ocl(benchmark::State &state) {
   struct timeval start, end;
 
   for (int i = 0; i < iterations; i++) {
-    ppl::cv::ocl::Convertto<Tsrc, Tdst, channels>(queue, src.rows, src.cols,
+    ppl::cv::ocl::ConvertTo<Tsrc, Tdst, channels>(queue, src.rows, src.cols,
         src.step / sizeof(Tsrc), gpu_src, dst.step / sizeof(Tdst), gpu_dst, alpha, beta);
   }
   clFinish(queue);
@@ -72,7 +72,7 @@ void BM_ConvertTo_ppl_ocl(benchmark::State &state) {
   for (auto _ : state) {
     gettimeofday(&start, NULL);
     for (int i = 0; i < iterations; i++) {
-      ppl::cv::ocl::Convertto<Tsrc, Tdst, channels>(queue, src.rows, src.cols,
+      ppl::cv::ocl::ConvertTo<Tsrc, Tdst, channels>(queue, src.rows, src.cols,
         src.step / sizeof(Tsrc), gpu_src, dst.step / sizeof(Tdst), gpu_dst, alpha, beta);
     }
     clFinish(queue);
