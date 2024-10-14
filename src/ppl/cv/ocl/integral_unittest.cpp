@@ -15,6 +15,7 @@
  */
 
 #include "ppl/cv/ocl/integral.h"
+#include "ppl/cv/ocl/use_memory_pool.h"
 
 #include <tuple>
 #include <sstream>
@@ -112,15 +113,13 @@ bool PplCvOclIntegralToTest<Tsrc, Tdst>::apply() {
                                     0, src_bytes1, 0, NULL, NULL, &error_code);
   CHECK_ERROR(error_code, clEnqueueMapBuffer);
 
-  cl_mem buffer = clCreateBuffer(context,                                        
-                                        CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,     
-                                        dst.rows * dst.step * sizeof(Tdst), NULL,       
-                                        &error_code);                                   
-  CHECK_ERROR(error_code, clCreateBuffer);                                             
-
   copyMatToArray(src, input);
   error_code = clEnqueueUnmapMemObject(queue, gpu_input, input, 0, NULL, NULL);
   CHECK_ERROR(error_code, clEnqueueUnmapMemObject);
+
+  size_t size_width = (size.width + 1) * sizeof(float);
+  size_t ceiled_volume = ppl::cv::ocl::ceil2DVolume(size_width, (size.height + 1));
+  ppl::cv::ocl::activateGpuMemoryPool(ceiled_volume);
 
   cv::integral(src, cv_dst, cv_dst.depth());
   if (dst.rows == src.rows && dst.cols == src.cols) {
@@ -133,10 +132,10 @@ bool PplCvOclIntegralToTest<Tsrc, Tdst>::apply() {
 
   ppl::cv::ocl::Integral<Tsrc, Tdst>(queue, src.rows, src.cols,
       src.step / sizeof(Tsrc), gpu_src, dst.rows, dst.cols,
-      dst.step / sizeof(Tdst), gpu_dst, buffer);
+      dst.step / sizeof(Tdst), gpu_dst);
   ppl::cv::ocl::Integral<Tsrc, Tdst>(queue, size.height, size.width,
       size.width, gpu_input, size.height + 1, size.width + 1,
-      size.width + 1, gpu_output, buffer);
+      size.width + 1, gpu_output);
 
   error_code = clEnqueueReadBuffer(queue, gpu_dst, CL_TRUE, 0, dst_bytes0,
                                    dst.data, 0, NULL, NULL);
@@ -165,11 +164,11 @@ bool PplCvOclIntegralToTest<Tsrc, Tdst>::apply() {
 
   CHECK_ERROR(error_code, clEnqueueUnmapMemObject);
 
+  ppl::cv::ocl::shutDownGpuMemoryPool();
   clReleaseMemObject(gpu_src);
   clReleaseMemObject(gpu_dst);
   clReleaseMemObject(gpu_input);
   clReleaseMemObject(gpu_output);
-  clReleaseMemObject(buffer);
 
   return (identity0 && identity1);
 }

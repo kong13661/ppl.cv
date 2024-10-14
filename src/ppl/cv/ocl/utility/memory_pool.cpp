@@ -18,7 +18,7 @@ GpuMemoryPool::GpuMemoryPool() {
 GpuMemoryPool::~GpuMemoryPool() {
   if (pool != nullptr) {
     if (!memory_blocks_.empty()) {
-      LOG(ERROR) << "Cuda Memory Pool error: allocated memory blocks have to be released first.";
+      LOG(ERROR) << "OpenCL Memory Pool error: allocated memory blocks have to be released first.";
     }
     cl_int code = clReleaseMemObject(pool);
     CHECK_ERROR(code, clReleaseMemObject);
@@ -36,7 +36,7 @@ void GpuMemoryPool::mallocMemoryPool(size_t size) {
 void GpuMemoryPool::freeMemoryPool() {
   if (pool != nullptr) {
     if (!memory_blocks_.empty()) {
-      LOG(ERROR) << "Cuda Memory Pool error: allocated memory blocks have to be released first.";
+      LOG(ERROR) << "OpenCL Memory Pool error: allocated memory blocks have to be released first.";
     }
     cl_int code = clReleaseMemObject(pool);
     CHECK_ERROR(code, clReleaseMemObject);
@@ -64,7 +64,7 @@ void GpuMemoryPool::malloc1DBlock(GpuMemoryBlock &memory_block,
     }
     else {
       host_mutex_.unlock();
-      LOG(ERROR) << "Cuda Memory Pool error: insufficient space.";
+      LOG(ERROR) << "OpenCL Memory Pool error: insufficient space.";
     }
 
     return;
@@ -87,7 +87,7 @@ void GpuMemoryPool::malloc1DBlock(GpuMemoryBlock &memory_block,
     }
     else {
       host_mutex_.unlock();
-      LOG(ERROR) << "Cuda Memory Pool error: insufficient space.";
+      LOG(ERROR) << "OpenCL Memory Pool error: insufficient space.";
     }
 
     return;
@@ -124,7 +124,7 @@ void GpuMemoryPool::malloc1DBlock(GpuMemoryBlock &memory_block,
   }
   else {
     host_mutex_.unlock();
-    LOG(ERROR) << "Cuda Memory Pool error: insufficient space.";
+    LOG(ERROR) << "OpenCL Memory Pool error: insufficient space.";
   }
 }
 
@@ -146,7 +146,7 @@ void GpuMemoryPool::malloc2DBlock(GpuMemoryBlock &memory_block, size_t width, si
     }
     else {
       host_mutex_.unlock();
-      LOG(ERROR) << "Cuda Memory Pool error: insufficient space.";
+      LOG(ERROR) << "OpenCL Memory Pool error: insufficient space.";
     }
 
     return;
@@ -169,7 +169,7 @@ void GpuMemoryPool::malloc2DBlock(GpuMemoryBlock &memory_block, size_t width, si
     }
     else {
       host_mutex_.unlock();
-      LOG(ERROR) << "Cuda Memory Pool error: insufficient space.";
+      LOG(ERROR) << "OpenCL Memory Pool error: insufficient space.";
     }
 
     return;
@@ -205,13 +205,13 @@ void GpuMemoryPool::malloc2DBlock(GpuMemoryBlock &memory_block, size_t width, si
   }
   else {
     host_mutex_.unlock();
-    LOG(ERROR) << "Cuda Memory Pool error: insufficient space.";
+    LOG(ERROR) << "OpenCL Memory Pool error: insufficient space.";
   }
 }
 
 void GpuMemoryPool::freeMemoryBlock(GpuMemoryBlock &memory_block) {
   if (memory_blocks_.empty()) {
-    LOG(ERROR) << "Cuda Memory Pool error: empty pool can't contain a block.";
+    LOG(ERROR) << "OpenCL Memory Pool error: empty pool can't contain a block.";
 
     return;
   }
@@ -234,7 +234,7 @@ void GpuMemoryPool::freeMemoryBlock(GpuMemoryBlock &memory_block) {
   }
 
   if (current == memory_blocks_.end()) {
-    LOG(ERROR) << "Cuda Memory Pool error: can't not find the memory block.";
+    LOG(ERROR) << "OpenCL Memory Pool error: can't not find the memory block.";
   }
 }
 

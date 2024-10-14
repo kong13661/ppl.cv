@@ -15,9 +15,11 @@
  */
 
 #if defined(INTEGRAL_U8) || defined(ALL_KERNELS)
-__kernel void setZeroI32(global int* dst, int cols) {
+__kernel 
+void setZeroI32(global int* dst, int offset, int cols) {
   int index_x = get_global_id(0);
   index_x <<= 1;
+  dst = (global int*)((global uchar*)dst + offset);
   if (index_x >= cols) {
     return;
   }
@@ -31,9 +33,11 @@ __kernel void setZeroI32(global int* dst, int cols) {
 #endif
 
 #if defined(INTEGRAL_F32) || defined(ALL_KERNELS)
-__kernel void setZeroF32(global float* dst, int cols) {
+__kernel 
+void setZeroF32(global float* dst, int offset, int cols) {
   int index_x = get_global_id(0);
   index_x <<= 1;
+  dst = (global float*)((global uchar*)dst + offset);
   if (index_x >= cols) {
     return;
   }
@@ -48,8 +52,9 @@ __kernel void setZeroF32(global float* dst, int cols) {
 
 
 #if defined(INTEGRAL_U8) || defined(ALL_KERNELS)
-void integralU8I32Kernel(global const uchar* src, int src_rows, int src_cols,
-                         int src_stride, global int* dst, int dst_rows,
+__kernel 
+void integralU8I32Kernel(global const uchar* src, int src_offset, int src_rows, int src_cols,
+                         int src_stride, global int* dst, int dst_offset, int dst_rows,
                          int dst_cols, int dst_stride) {
   int element_y = get_group_id(0);
   int local_x = get_local_id(0);
@@ -58,7 +63,8 @@ void integralU8I32Kernel(global const uchar* src, int src_rows, int src_cols,
   if (index_x >= src_cols || index_y >= src_rows) {
     return;
   }
-  int dst_offset;
+  src = (global const uchar*)((global uchar*)src + src_offset);
+  dst = (global int*)((global uchar*)dst + dst_offset);
   if (src_rows == dst_cols) {
     dst_offset = 0;
   }
@@ -170,17 +176,20 @@ void integralU8I32Kernel(global const uchar* src, int src_rows, int src_cols,
 #endif
 
 #if defined(INTEGRAL_U8) || defined(ALL_KERNELS)
-void integralI32I32Kernel(global const int* src, int src_rows, int src_cols,
-                          int src_stride, global int* dst, int dst_rows,
+__kernel 
+void integralI32I32Kernel(global const int* src, int src_offset, int src_rows, int src_cols,
+                          int src_stride, global int* dst, int dst_offset, int dst_rows,
                           int dst_cols, int dst_stride) {
   int element_y = get_group_id(0);
   int local_x = get_local_id(0);
   int local_size = get_local_size(0);
+  
   int index_x = local_x * 2, index_y = element_y * 2;
   if (index_x >= src_cols || index_y >= src_rows) {
     return;
   }
-  int dst_offset;
+  src = (global const int*)((global uchar*)src + src_offset);
+  dst = (global int*)((global uchar*)dst + dst_offset);
   if (src_rows == dst_cols) {
     dst_offset = 0;
   }
@@ -292,8 +301,9 @@ void integralI32I32Kernel(global const int* src, int src_rows, int src_cols,
 #endif
 
 #if defined(INTEGRAL_F32) || defined(ALL_KERNELS)
-void integralF32F32Kernel(global const float* src, int src_rows, int src_cols,
-                          int src_stride, global float* dst, int dst_rows,
+__kernel 
+void integralF32F32Kernel(global const float* src, int src_offset, int src_rows, int src_cols,
+                          int src_stride, global float* dst, int dst_offset, int dst_rows,
                           int dst_cols, int dst_stride) {
   int element_y = get_group_id(0);
   int local_x = get_local_id(0);
@@ -302,7 +312,8 @@ void integralF32F32Kernel(global const float* src, int src_rows, int src_cols,
   if (index_x >= src_cols || index_y >= src_rows) {
     return;
   }
-  int dst_offset;
+  src = (global const float*)((global uchar*)src + src_offset);
+  dst = (global float*)((global uchar*)dst + dst_offset);
   if (src_rows == dst_cols) {
     dst_offset = 0;
   }

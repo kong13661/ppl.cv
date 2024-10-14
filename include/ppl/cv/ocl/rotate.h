@@ -26,28 +26,25 @@ namespace cv {
 namespace ocl {
 
 /**
- * @brief Flips a 2D image around vertical, horizontal, or both axes.
- * @tparam T The data type, used for both source image and destination image,
- *         currently only uint8_t(uchar) and float are supported.
+ * @brief  Rotates a 2D array in multiples of 90 degrees.
+ * @tparam T The data type of input and output image, currently only
+ *         uint8_t(uchar) and float are supported.
  * @tparam channels The number of channels of input image, 1, 3 and 4 are
  *         supported.
- * @param queue          opencl command queue.
- * @param height         input&output image's height.
- * @param width          input&output image's width.
- * @param inWidthStride  input image's width stride, which is not less than
- *                       `width * channels`.
- * @param inData         input image data.
- * @param outWidthStride width stride of output image, similar to inWidthStride.
- * @param outData        output image data.
- * @param flipCode       a flag to specify how to flip the array; 0 means
- *                       flipping around the x-axis and positive value (for
- *                       example, 1) means flipping around y-axis. Negative
- *                       value (for example, -1) means flipping around both
- *                       axes.
+ * @param queue            opencl command queue.
+ * @param inHeight         input image's height.
+ * @param inWidth          input image's width.
+ * @param inWidthStride    input image's width stride, which is not less than
+ *                         `width * channels * sizeof(T)`.
+ * @param inData           input image data, it should be a buffer object.
+ * @param outHeight        output image's height.
+ * @param outWidth         output image's width.
+ * @param outWidthStride   the width stride of output image, similar to
+ *                         inWidthStride.
+ * @param outData          output image data, it should be a buffer object.
+ * @param degree           rotation angle, 90, 180 and 270 are supported.
  * @return The execution status, succeeds or fails with an error code.
- * @note For best performance, rows of input&output aligned with 64 bits are
- *       recommended.
- * @warning All parameters must be valid, or undefined behaviour may occur.
+ * @warning All input parameters must be valid, or undefined behaviour may occur.
  * @remark The fllowing table show which data type and channels are supported.
  * <table>
  * <tr><th>Data type(T)<th>channels
@@ -61,47 +58,41 @@ namespace ocl {
  * <table>
  * <caption align="left">Requirements</caption>
  * <tr><td>OpenCL platforms supported <td>OpenCL 1.2
- * <tr><td>Header files <td>#include "ppl/cv/ocl/flip.h";
- * <tr><td>Project      <td>ppl.cv
+ * <tr><td>Header files  <td> #include "ppl/cv/ocl/rotate.h"
+ * <tr><td>Project       <td> ppl.cv
  * </table>
  * @since ppl.cv-v1.0.0
  * ###Example
  * @code{.cpp}
- * #include "ppl/cv/ocl/flip.h"
- * #include "ppl/common/oclcommon.h"
- *
- * using namespace ppl::common::ocl;
+ * #include "ppl/cv/ocl/rotate.h"
  * using namespace ppl::cv::ocl;
  *
  * int main(int argc, char** argv) {
- *   int width    = 640;
- *   int height   = 480;
+ *   int src_width  = 640;
+ *   int src_height = 480;
+ *   int dst_width  = 640;
+ *   int dst_height = 480;
  *   int channels = 3;
+ *   int degree   = 180;
  *
- *   createSharedFrameChain(false);
- *   cl_context context = getSharedFrameChain()->getContext();
- *   cl_command_queue queue = getSharedFrameChain()->getQueue();
+ *   float* gpu_input;
+ *   float* gpu_output;
+ *   size_t input_pitch, output_pitch;
+ *   cudaMallocPitch(&gpu_input, &input_pitch,
+ *                   src_width * channels * sizeof(float), src_height);
+ *   cudaMallocPitch(&gpu_output, &output_pitch,
+ *                   dst_width * channels * sizeof(float), dst_height);
  *
- *   cl_int error_code = 0;
- *   int data_size = height * width * channels * sizeof(float);
- *   float* input = (float*)malloc(data_size);
- *   float* output = (float*)malloc(data_size);
- *   cl_mem gpu_input = clCreateBuffer(context, CL_MEM_READ_ONLY, data_size,
- *                                     NULL, &error_code);
- *   cl_mem gpu_output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, data_size,
- *                                      NULL, &error_code);
- *   error_code = clEnqueueWriteBuffer(queue, gpu_input, CL_FALSE, 0,
- *                                     data_size, input, 0, NULL, NULL);
+ *   cudaStream_t stream;
+ *   cudaStreamCreate(&stream);
+ *   Rotate<float, 3>(stream, src_height, src_width, input_pitch / sizeof(float),
+ *                    gpu_input, dst_height, dst_width,
+ *                    output_pitch / sizeof(float), degree);
+ *   cudaStreamSynchronize(stream);
+ *   cudaStreamDestroy(stream);
  *
- *   Flip<float, 3>(queue, height, width, width * channels, gpu_input,
- *                  width * channels, gpu_output, 0);
- *   error_code = clEnqueueReadBuffer(queue, gpu_output, CL_TRUE, 0, data_size,
- *                                    output, 0, NULL, NULL);
- *
- *   free(input);
- *   free(output);
- *   clReleaseMemObject(gpu_input);
- *   clReleaseMemObject(gpu_output);
+ *   cudaFree(gpu_input);
+ *   cudaFree(gpu_output);
  *
  *   return 0;
  * }

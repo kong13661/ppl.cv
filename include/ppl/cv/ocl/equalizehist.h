@@ -59,6 +59,7 @@ namespace ocl {
  * #include "ppl/cv/ocl/equalizehist.h"
  * #include "ppl/common/oclcommon.h"
  * #include "ppl/cv/ocl/use_memory_pool.h"
+ * using namespace ppl::common::ocl;
  * using namespace ppl::cv::ocl;
  *
  * int main(int argc, char** argv) {

@@ -65,23 +65,27 @@ RetCode equalizehist(const cl_mem src, int rows, int cols, int src_stride,
   size_t global_size[2];
   global_size[0] = 256;
 
-  runOclKernel(frame_chain, "equalizeHistKernel", 1, global_size, global_size,
-               hist, (int)buffer_block.offset);
+
   if (src_stride == columns && dst_stride == columns) {
+    frame_chain->setCompileOptions("-D EQUALIZEHIST_ALIGNED");
+
+    runOclKernel(frame_chain, "equalizeHistKernel", 1, global_size, global_size,
+                 hist, (int)buffer_block.offset);
     columns *= rows;
     local_size[0] = 256;
     local_size[1] = 1;
     global_size[0] =
         std::min((size_t)(MAX_BLOCKS * 256), (size_t)roundUp(columns, 256, 8));
     global_size[1] = 1;
-
-    frame_chain->setCompileOptions("-D EQUALIZEHIST_ALIGNED");
     runOclKernel(frame_chain, "equalizeHistKernel0", 2, global_size, local_size,
                  src, columns, hist, (int)buffer_block.offset);
     runOclKernel(frame_chain, "equalizeHistKernel00", 2, global_size,
                  local_size, src, columns, dst, hist, (int)buffer_block.offset);
   }
   else {
+    frame_chain->setCompileOptions("-D EQUALIZEHIST_UNALIGNED");
+    runOclKernel(frame_chain, "equalizeHistKernel", 1, global_size, global_size,
+                 hist, (int)buffer_block.offset);
     local_size[0] = kBlockDimX1;
     local_size[1] = kBlockDimY1;
     global_size[0] = roundUp(cols, kBlockDimX1, kBlockShiftX1);
@@ -90,7 +94,6 @@ RetCode equalizehist(const cl_mem src, int rows, int cols, int src_stride,
         (size_t)(MAX_BLOCKS * kBlockDimX1 * kBlockDimY1 / global_size[0]),
         global_size[1]);
 
-    frame_chain->setCompileOptions("-D EQUALIZEHIST_UNALIGNED");
     runOclKernel(frame_chain, "equalizeHistKernel1", 2, global_size, local_size,
                  src, src_stride, rows, columns, hist,
                  (int)buffer_block.offset);

@@ -51,7 +51,7 @@ namespace ocl {
  * @note 1 For best performance, this function
  *         need a memory pool to store the intermediate result, which is not
  *         less than ppl::cv::ocl::ceil2DVolume(width * channels * sizeof(float),
- *         height) * 2 + ppl::cv::ocl::ceil1DVolume(ksize * sizeof(float)).
+ *         height) + ppl::cv::ocl::ceil1DVolume(ksize * sizeof(float)).
  *       2 The anchor is at the kernel center.
  * @warning All parameters must be valid, or undefined behaviour may occur.
  * @remark The fllowing table show which data type and channels are supported.
@@ -75,6 +75,7 @@ namespace ocl {
  * @code{.cpp}
  * #include "ppl/cv/ocl/gaussianblur.h"
  * #include "ppl/common/oclcommon.h"
+ * using namespace ppl::common::ocl;
  * using namespace ppl::cv::ocl;
  *
  * int main(int argc, char** argv) {

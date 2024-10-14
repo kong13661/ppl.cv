@@ -72,6 +72,7 @@ namespace ocl {
  * @code{.cpp}
  * #include "ppl/cv/ocl/filter2d.h"
  * #include "ppl/common/oclcommon.h"
+ * using namespace ppl::common::ocl;
  * using namespace ppl::cv::ocl;
  *
  * int main(int argc, char** argv) {

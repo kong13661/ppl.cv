@@ -1028,7 +1028,7 @@ void rotateC3180F32Kernel(global const float* src, int rows, int cols,
         max(cols - index_x - 1, 0) * 3;
   if (rows_remained >= 2) {
     vstore3(input_value[1], 0, dst);
-    dst += dst_stride;
+    dst = (global float*)((global uchar*)dst + dst_stride);
     vstore3(input_value[0], 0, dst);
   }
   if (rows_remained == 1) {
@@ -1208,36 +1208,6 @@ void rotateC4270U8Kernel(global const uchar* src, int rows, int cols,
 }
 #endif
 
-#if defined(ROTATE90_F32C4) || defined(ALL_KERNELS)
-__kernel
-void rotateC4180F32Kernel(global const float* src, int rows, int cols,
-                          int src_stride, global float* dst, int dst_stride) {
-  int element_x = get_global_id(0);
-  int element_y = get_global_id(1);
-  int index_x = element_x, index_y = element_y * 2;
-  if (index_x >= cols || index_y >= rows) {
-    return;
-  }
-  src = (global const float*)((global uchar*)src + index_y * src_stride);
-  int rows_remained = rows - index_y;
-  float4 input_value[2];
-  for (int i = 0; i < min(rows_remained, 2); i++) {
-    input_value[i] = vload4(element_x, src);
-    src = (global const float*)((global uchar*)src + src_stride);
-  }
-  dst = (global float*)((global uchar*)dst +
-                        dst_stride * max(rows - index_y - 2, 0)) +
-        max(cols - index_x - 1, 0) * 4;
-  if (rows_remained >= 2) {
-    vstore4(input_value[1], 0, dst);
-    dst += dst_stride;
-    vstore4(input_value[0], 0, dst);
-  }
-  if (rows_remained == 1) {
-    vstore4(input_value[0], 0, dst);
-  }
-}
-#endif
 
 #if defined(ROTATE180_F32C4) || defined(ALL_KERNELS)
 __kernel
@@ -1253,7 +1223,7 @@ void rotateC4180F32Kernel(global const float* src, int rows, int cols,
   int rows_remained = rows - index_y;
   float4 input_value[2];
   for (int i = 0; i < min(rows_remained, 2); i++) {
-    input_value[i] = vload4(element_x, src);
+    input_value[i] = (vload4(element_x, src));
     src = (global const float*)((global uchar*)src + src_stride);
   }
   dst = (global float*)((global uchar*)dst +
@@ -1261,7 +1231,37 @@ void rotateC4180F32Kernel(global const float* src, int rows, int cols,
         max(cols - index_x - 1, 0) * 4;
   if (rows_remained >= 2) {
     vstore4(input_value[1], 0, dst);
-    dst += dst_stride;
+    dst = (global float*)((global uchar*)dst + dst_stride);
+    vstore4(input_value[0], 0, dst);
+  }
+  if (rows_remained == 1) {
+    vstore4(input_value[0], 0, dst);
+  }
+}
+#endif
+
+#if defined(ROTATE90_F32C4) || defined(ALL_KERNELS)
+__kernel
+void rotateC490F32Kernel(global const float* src, int rows, int cols,
+                         int src_stride, global float* dst, int dst_stride) {
+  int element_x = get_global_id(0);
+  int element_y = get_global_id(1);
+  int index_x = element_x, index_y = element_y * 2;
+  if (index_x >= cols || index_y >= rows) {
+    return;
+  }
+  src = (global const float*)((global uchar*)src + index_y * src_stride);
+  int rows_remained = rows - index_y;
+  float4 input_value[2];
+  for (int i = 0; i < min(rows_remained, 2); i++) {
+    input_value[i] = vload4(element_x, src);
+    src = (global const float*)((global uchar*)src + src_stride);
+  }
+  dst = (global float*)((global uchar*)dst + dst_stride * index_x) +
+        max(rows - index_y - 2, 0) * 4;
+  if (rows_remained >= 2) {
+    vstore4(input_value[1], 0, dst);
+    dst += 4;
     vstore4(input_value[0], 0, dst);
   }
   if (rows_remained == 1) {

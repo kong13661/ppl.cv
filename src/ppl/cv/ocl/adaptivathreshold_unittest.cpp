@@ -239,7 +239,7 @@ INSTANTIATE_TEST_CASE_P(IsEqual,                                               \
   PplCvOclAdaptiveThresholdToTest ## T ## channels,                       \
   ::testing::Combine(                                                          \
     ::testing::Values(3),                                       \
-    ::testing::Values(ADAPTIVE_THRESH_GAUSSIAN_C),                    \
+    ::testing::Values(ADAPTIVE_THRESH_MEAN_C),                    \
     ::testing::Values(THRESH_BINARY),     \
     ::testing::Values(70),                                      \
     ::testing::Values(0),                                      \

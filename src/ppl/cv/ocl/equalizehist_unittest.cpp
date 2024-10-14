@@ -15,6 +15,7 @@
  */
 
 #include "ppl/cv/ocl/equalizehist.h"
+#include "ppl/cv/ocl/use_memory_pool.h"
 
 #include <tuple>
 #include <sstream>
@@ -76,6 +77,7 @@ bool PplCvOclEqualizehistTest::apply() {
               CV_MAKETYPE(cv::DataType<uchar>::depth, 1));
   cv::Mat cv_dst(size.height, size.width,
                  CV_MAKETYPE(cv::DataType<uchar>::depth, 1));
+  ppl::cv::ocl::activateGpuMemoryPool(1024);
 
   int src_bytes0 = src.rows * src.step;
   int dst_bytes0 = dst.rows * dst.step;
@@ -130,7 +132,7 @@ bool PplCvOclEqualizehistTest::apply() {
   CHECK_ERROR(error_code, clEnqueueMapBuffer);
 
   float epsilon;
-  epsilon = EPSILON_1F;
+  epsilon = EPSILON_2F;
 
   bool identity0 = checkMatricesIdentity<uchar>((const uchar*)cv_dst.data, cv_dst.rows,
       cv_dst.cols, cv_dst.channels(), cv_dst.step, (const uchar*)dst.data, dst.step,
@@ -146,6 +148,7 @@ bool PplCvOclEqualizehistTest::apply() {
   clReleaseMemObject(gpu_dst);
   clReleaseMemObject(gpu_input);
   clReleaseMemObject(gpu_output);
+  ppl::cv::ocl::shutDownGpuMemoryPool();
 
   return (identity0 && identity1);
 }

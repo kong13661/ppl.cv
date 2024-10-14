@@ -206,7 +206,7 @@ RetCode Merge3Channels<uchar>(cl_command_queue queue,
 }
 
 template <>
-RetCode Merge3Channels<uchar>(cl_command_queue queue,
+RetCode Merge3Channels<float>(cl_command_queue queue,
                               int height,
                               int width,
                               int inWidthStride,
@@ -215,9 +215,9 @@ RetCode Merge3Channels<uchar>(cl_command_queue queue,
                               const cl_mem inData2,
                               int outWidthStride,
                               cl_mem outData) {
-  inWidthStride *= sizeof(uchar);
-  outWidthStride *= sizeof(uchar);
-  RetCode code = merge3U8(inData0, inData1, inData2, height, width,
+  inWidthStride *= sizeof(float);
+  outWidthStride *= sizeof(float);
+  RetCode code = merge3F32(inData0, inData1, inData2, height, width,
                           inWidthStride, outData, outWidthStride, queue);
   return code;
 }
