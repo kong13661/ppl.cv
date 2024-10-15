@@ -26,34 +26,27 @@ namespace cv {
 namespace ocl {
 
 /**
- * @brief Flips a 2D image around vertical, horizontal, or both axes.
+ * @brief Transposes a 2D matrix.
  * @tparam T The data type, used for both source image and destination image,
  *         currently only uint8_t(uchar) and float are supported.
  * @tparam channels The number of channels of input image, 1, 3 and 4 are
  *         supported.
  * @param queue          opencl command queue.
- * @param height         input&output image's height.
- * @param width          input&output image's width.
+ * @param inHeight       input image's height.
+ * @param inWidth        input image's width need to be processed.
  * @param inWidthStride  input image's width stride, which is not less than
- *                       `width * channels`.
- * @param inData         input image data.
- * @param outWidthStride width stride of output image, similar to inWidthStride.
- * @param outData        output image data.
- * @param flipCode       a flag to specify how to flip the array; 0 means
- *                       flipping around the x-axis and positive value (for
- *                       example, 1) means flipping around y-axis. Negative
- *                       value (for example, -1) means flipping around both
- *                       axes.
- * @return The execution status, succeeds or fails with an error code.
- * @note For best performance, rows of input&output aligned with 64 bits are
- *       recommended.
+ *                       `width * channels * sizeof(T)`.
+ * @param inData         input image data, it should be a buffer object.
+ * @param outWidthStride the width stride of output image, simular to
+ *                       inWidthStride.
+ * @param outData        output image data, it should be a buffer object.
  * @warning All parameters must be valid, or undefined behaviour may occur.
  * @remark The fllowing table show which data type and channels are supported.
  * <table>
  * <tr><th>Data type(T)<th>channels
- * <tr><td>uint8_t(uchar)<td>1
- * <tr><td>uint8_t(uchar)<td>3
- * <tr><td>uint8_t(uchar)<td>4
+ * <tr><td>uint8_t(uint8_t(uchar))<td>1
+ * <tr><td>uint8_t(uint8_t(uchar))<td>3
+ * <tr><td>uint8_t(uint8_t(uchar))<td>4
  * <tr><td>float<td>1
  * <tr><td>float<td>3
  * <tr><td>float<td>4
@@ -61,13 +54,13 @@ namespace ocl {
  * <table>
  * <caption align="left">Requirements</caption>
  * <tr><td>OpenCL platforms supported <td>OpenCL 1.2
- * <tr><td>Header files <td>#include "ppl/cv/ocl/flip.h";
+ * <tr><td>Header files <td>#include "ppl/cv/ocl/transpose.h";
  * <tr><td>Project      <td>ppl.cv
  * </table>
  * @since ppl.cv-v1.0.0
  * ###Example
  * @code{.cpp}
- * #include "ppl/cv/ocl/flip.h"
+ * #include "ppl/cv/ocl/transpose.h"
  * #include "ppl/common/oclcommon.h"
  *
  * using namespace ppl::common::ocl;
@@ -93,8 +86,8 @@ namespace ocl {
  *   error_code = clEnqueueWriteBuffer(queue, gpu_input, CL_FALSE, 0,
  *                                     data_size, input, 0, NULL, NULL);
  *
- *   Flip<float, 3>(queue, height, width, width * channels, gpu_input,
- *                  width * channels, gpu_output, 0);
+ *   Transpose<float, 3>(queue, height, width,
+ *       width * channels, gpu_input, height * channels, gpu_output);
  *   error_code = clEnqueueReadBuffer(queue, gpu_output, CL_TRUE, 0, data_size,
  *                                    output, 0, NULL, NULL);
  *

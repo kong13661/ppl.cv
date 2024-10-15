@@ -102,7 +102,7 @@ namespace ocl {
  *   error_code = clEnqueueWriteBuffer(queue, gpu_input_kernel, CL_FALSE, 0,
  *                                     kernel_size, kernel, 0, NULL, NULL);
  *
- *   Filter2D<T, channels>(
+ *   Filter2D<float, 3>(
  *        queue, height, width, width * channels, gpu_input, ksize,
  *        gpu_input_kernel, width * channels, gpu_output);
  *   error_code = clEnqueueReadBuffer(queue, gpu_output, CL_TRUE, 0, data_size,

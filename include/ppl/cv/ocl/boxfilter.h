@@ -105,7 +105,7 @@ namespace ocl {
  *                                      NULL, &error_code);
  *   error_code = clEnqueueWriteBuffer(queue, gpu_input, CL_FALSE, 0,
  *                                     data_size, input, 0, NULL, NULL);
- *   BoxFilter<T, channels>(
+ *   BoxFilter<float, 3>(
  *         queue, height, width, width * channels, gpu_input, ksize_x, ksize_y,
  *         normalize, width * channels, gpu_output, 
  *         border_type);

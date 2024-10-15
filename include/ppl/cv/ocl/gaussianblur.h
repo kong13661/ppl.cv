@@ -102,7 +102,7 @@ namespace ocl {
  *   error_code = clEnqueueWriteBuffer(queue, gpu_input, CL_FALSE, 0,
  *                                     data_size, input, 0, NULL, NULL);
  *
- *   GaussianBlur<T, channels>(
+ *   GaussianBlur<float, 3>(
  *     queue, height, width, width * channels, gpu_input, ksize,
  *     sigma, width * channels, gpu_output);
  *   error_code = clEnqueueReadBuffer(queue, gpu_output, CL_TRUE, 0, data_size,

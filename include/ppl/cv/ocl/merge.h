@@ -83,7 +83,7 @@ namespace ocl {
  *   error_code = clEnqueueWriteBuffer(queue, gpu_input, CL_FALSE, 0,
  *                                     data_size, input, 0, NULL, NULL);
  *
- *   Merge3Channels<T>(queue, height, width,
+ *   Merge3Channels<float>(queue, height, width,
  *       width, gpu_input, gpu_input, gpu_input,
  *       width * channels, gpu_output);
  *   error_code = clEnqueueReadBuffer(queue, gpu_output, CL_TRUE, 0, data_size,
@@ -172,7 +172,7 @@ ppl::common::RetCode Merge3Channels(cl_command_queue queue,
  *   error_code = clEnqueueWriteBuffer(queue, gpu_input, CL_FALSE, 0,
  *                                     data_size, input, 0, NULL, NULL);
  *
- *   Merge4Channels<T>(queue, height, width,
+ *   Merge4Channels<float>(queue, height, width,
  *       width, gpu_input, gpu_input, gpu_input, gpu_input,
  *       width * channels, gpu_output);
  *   error_code = clEnqueueReadBuffer(queue, gpu_output, CL_TRUE, 0, data_size,

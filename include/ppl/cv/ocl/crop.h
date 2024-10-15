@@ -97,7 +97,7 @@ namespace ocl {
  *   error_code = clEnqueueWriteBuffer(queue, gpu_input, CL_FALSE, 0,
  *                                     data_size, input, 0, NULL, NULL);
  *
- *   Crop<T, channels>(queue, src_height, src_width,
+ *   Crop<float, 3>(queue, src_height, src_width,
  *         src_width * channels, gpu_input, height, width, 
  *         width * channels, gpu_output, left, top, 1.f);
  *   error_code = clEnqueueReadBuffer(queue, gpu_output, CL_TRUE, 0, data_size,

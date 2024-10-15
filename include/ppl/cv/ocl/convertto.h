@@ -99,7 +99,7 @@ namespace ocl {
  *   error_code = clEnqueueWriteBuffer(queue, gpu_input, CL_FALSE, 0,
  *                                     data_size, input, 0, NULL, NULL);
  *
- *   ConvertTo<Tsrc, Tdst, channels>(queue, height, width,
+ *   ConvertTo<float, float, 3>(queue, height, width,
  *         width * channels, gpu_input, width * channels, gpu_output);
  *   error_code = clEnqueueReadBuffer(queue, gpu_output, CL_TRUE, 0, data_size,
  *                                    output, 0, NULL, NULL);

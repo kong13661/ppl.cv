@@ -75,24 +75,30 @@ namespace ocl {
  *   int channels = 3;
  *   int degree   = 180;
  *
- *   float* gpu_input;
- *   float* gpu_output;
- *   size_t input_pitch, output_pitch;
- *   cudaMallocPitch(&gpu_input, &input_pitch,
- *                   src_width * channels * sizeof(float), src_height);
- *   cudaMallocPitch(&gpu_output, &output_pitch,
- *                   dst_width * channels * sizeof(float), dst_height);
+ *   createSharedFrameChain(false);
+ *   cl_context context = getSharedFrameChain()->getContext();
+ *   cl_command_queue queue = getSharedFrameChain()->getQueue();
  *
- *   cudaStream_t stream;
- *   cudaStreamCreate(&stream);
- *   Rotate<float, 3>(stream, src_height, src_width, input_pitch / sizeof(float),
- *                    gpu_input, dst_height, dst_width,
- *                    output_pitch / sizeof(float), degree);
- *   cudaStreamSynchronize(stream);
- *   cudaStreamDestroy(stream);
+ *   cl_int error_code = 0;
+ *   int data_size = height * width * channels * sizeof(float);
+ *   float* input = (float*)malloc(data_size);
+ *   float* output = (float*)malloc(data_size);
+ *   cl_mem gpu_input = clCreateBuffer(context, CL_MEM_READ_ONLY, data_size,
+ *                                     NULL, &error_code);
+ *   cl_mem gpu_output = clCreateBuffer(context, CL_MEM_WRITE_ONLY, data_size,
+ *                                      NULL, &error_code);
+ *   error_code = clEnqueueWriteBuffer(queue, gpu_input, CL_FALSE, 0,
+ *                                     data_size, input, 0, NULL, NULL);
  *
- *   cudaFree(gpu_input);
- *   cudaFree(gpu_output);
+ *   Rotate<float, 3>(queue, src_height, src_width,
+ *       src_width * channels, gpu_input, dst_height, dst_width, dst_width * channels, gpu_output, degree);
+ *   error_code = clEnqueueReadBuffer(queue, gpu_output, CL_TRUE, 0, data_size,
+ *                                    output, 0, NULL, NULL);
+ *
+ *   free(input);
+ *   free(output);
+ *   clReleaseMemObject(gpu_input);
+ *   clReleaseMemObject(gpu_output);
  *
  *   return 0;
  * }
