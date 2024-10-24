@@ -524,7 +524,7 @@ ppl::common::RetCode Div(cl_command_queue queue,
 
 
 /**
- * @brief Calculates the element-wise scaled division of two matrices.
+ * @brief Calculates the multiplication-addition of two matrices.
  * @tparam T The data type, used for both input and output image, currently only
  *         uint8_t(uchar) and float are supported.
  * @tparam channels The number of channels of input image, 1, 3 and 4 are
@@ -623,7 +623,7 @@ ppl::common::RetCode Mla(cl_command_queue queue,
 
 
 /**
- * @brief Calculates the element-wise scaled division of two matrices.
+ * @brief Calculates the multiplication-subtraction of two matrices.
  * @tparam T The data type, used for both input and output image, currently only
  *         uint8_t(uchar) and float are supported.
  * @tparam channels The number of channels of input image, 1, 3 and 4 are

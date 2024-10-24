@@ -24,10 +24,6 @@
 using namespace ppl::common;
 using namespace ppl::common::ocl;
 
-#define F32DIV 2
-#define F32OFFSET 1
-#define U8DIV 4
-#define U8OFFSET 2
 
 namespace ppl {
 namespace cv {
@@ -51,7 +47,7 @@ RetCode cropU8(const cl_mem src, int src_rows, int src_cols, int channels,
   frame_chain->setProjectName("cv");
   SET_PROGRAM_SOURCE(frame_chain, crop);
   int columns = dst_cols * channels;
-  dst_cols = divideUp(columns, U8DIV, U8OFFSET);
+  dst_cols = divideUp(columns, 4, 2);
   size_t local_size[] = {kBlockDimX0, kBlockDimY0};
   size_t global_size[] = {(size_t)dst_cols, (size_t)dst_rows};
   frame_chain->setCompileOptions("-D CROP_U8");
@@ -79,7 +75,7 @@ RetCode cropF32(const cl_mem src, int src_rows, int src_cols, int channels,
   frame_chain->setProjectName("cv");
   SET_PROGRAM_SOURCE(frame_chain, crop);
   int columns = dst_cols * channels;
-  dst_cols = divideUp(columns, F32DIV, F32OFFSET);
+  dst_cols = divideUp(columns, 2, 1);
   size_t local_size[] = {kBlockDimX0, kBlockDimY0};
   size_t global_size[] = {(size_t)dst_cols, (size_t)dst_rows};
   frame_chain->setCompileOptions("-D CROP_F32");

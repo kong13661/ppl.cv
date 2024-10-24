@@ -44,8 +44,9 @@ RetCode integralU8I32(const cl_mem src, int src_rows, int src_cols,
              (dst_rows == src_rows + 1 && dst_cols == src_cols + 1));
   PPL_ASSERT(src_stride >= src_cols * (int)sizeof(uchar));
   PPL_ASSERT(dst_stride >= dst_cols * (int)sizeof(int));
-  size_t local_size[] = {BLOCK_X};
-  size_t global_size[] = {(size_t)(divideUp(src_rows, 2, 1) * BLOCK_X)};
+  size_t local_size[] = {BLOCK_X, 1};
+  size_t global_size[] = {(size_t)(divideUp(src_rows, 2, 1) * BLOCK_X), 1};
+
 
   FrameChain* frame_chain = getSharedFrameChain();
   frame_chain->setProjectName("cv");
@@ -71,13 +72,15 @@ RetCode integralU8I32(const cl_mem src, int src_rows, int src_cols,
   frame_chain->setCompileOptions("-D INTEGRAL_U8");
   runOclKernel(frame_chain, "setZeroI32", 1, global_size, local_size,
                buffer, (int)buffer_block.offset, dst_rows * dst_rows);
-  local_size[0] = BLOCK_X;
-  global_size[0] = (size_t)(divideUp(src_rows, 2, 1) * BLOCK_X);
-  runOclKernel(frame_chain, "integralU8I32Kernel", 1, global_size, local_size,
+  local_size[0] = 1;
+  local_size[1] = BLOCK_X;
+  global_size[0] = 1;
+  global_size[1] = (size_t)(divideUp(src_rows, 2, 1));
+  runOclKernel(frame_chain, "integralU8I32Kernel", 2, global_size, local_size,
                src, 0, src_rows, src_cols, src_stride, buffer, (int)buffer_block.offset, dst_cols,
                dst_rows, dst_rows * (int)sizeof(int));
-  global_size[0] = (size_t)(divideUp(dst_cols, 2, 1) * BLOCK_X);
-  runOclKernel(frame_chain, "integralI32I32Kernel", 1, global_size, local_size,
+  global_size[1] = (size_t)(divideUp(dst_cols, 2, 1));
+  runOclKernel(frame_chain, "integralI32I32Kernel", 2, global_size, local_size,
                buffer, (int)buffer_block.offset, dst_cols, dst_rows, dst_rows * (int)sizeof(int),
                dst, 0, dst_rows, dst_cols, dst_stride);
   if (memoryPoolUsed()) {
@@ -101,8 +104,8 @@ RetCode integralF32F32(const cl_mem src, int src_rows, int src_cols,
              (dst_rows == src_rows + 1 && dst_cols == src_cols + 1));
   PPL_ASSERT(src_stride >= src_cols * (int)sizeof(float));
   PPL_ASSERT(dst_stride >= dst_cols * (int)sizeof(float));
-  size_t local_size[] = {BLOCK_X};
-  size_t global_size[] = {(size_t)(divideUp(src_rows, 2, 1) * BLOCK_X)};
+  size_t local_size[] = {BLOCK_X, 1};
+  size_t global_size[] = {(size_t)(divideUp(src_rows, 2, 1) * BLOCK_X), 1};
 
   FrameChain* frame_chain = getSharedFrameChain();
   frame_chain->setProjectName("cv");
@@ -128,13 +131,15 @@ RetCode integralF32F32(const cl_mem src, int src_rows, int src_cols,
   local_size[0] = 128;
   runOclKernel(frame_chain, "setZeroF32", 1, global_size, local_size,
                buffer, (int)buffer_block.offset, dst_rows * dst_rows);
-  local_size[0] = BLOCK_X;
-  global_size[0] = (size_t)(divideUp(src_rows, 2, 1) * BLOCK_X);
-  runOclKernel(frame_chain, "integralF32F32Kernel", 1, global_size, local_size,
+  local_size[0] = 1;
+  local_size[1] = BLOCK_X;
+  global_size[0] = 1;
+  global_size[1] = (size_t)(divideUp(src_rows, 2, 1));
+  runOclKernel(frame_chain, "integralF32F32Kernel", 2, global_size, local_size,
                src, 0, src_rows, src_cols, src_stride, buffer, (int)buffer_block.offset, dst_cols,
                dst_rows, dst_rows * (int)sizeof(float));
-  global_size[0] = (size_t)(divideUp(dst_cols, 2, 1) * BLOCK_X);
-  runOclKernel(frame_chain, "integralF32F32Kernel", 1, global_size, local_size,
+  global_size[1] = (size_t)(divideUp(dst_cols, 2, 1));
+  runOclKernel(frame_chain, "integralF32F32Kernel", 2, global_size, local_size,
                buffer, (int)buffer_block.offset, dst_cols, dst_rows, dst_rows * (int)sizeof(float),
                dst, (int)buffer_block.offset, dst_rows, dst_cols, dst_stride);
   if (memoryPoolUsed()) {

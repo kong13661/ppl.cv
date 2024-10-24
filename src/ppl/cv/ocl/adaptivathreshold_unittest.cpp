@@ -227,28 +227,29 @@ bool PplCvOclAdaptiveThresholdToTest<T, channels>::apply() {
   return (identity0 && identity1);
 }
 
-#define UNITTEST(T, channels)                                         \
-using PplCvOclAdaptiveThresholdToTest ## T ## channels =                  \
-        PplCvOclAdaptiveThresholdToTest<T, channels>;                       \
-TEST_P(PplCvOclAdaptiveThresholdToTest ## T ## channels, Standard) {      \
+#define UNITTEST(T, channels)                                                  \
+using PplCvOclAdaptiveThresholdToTest ## T ## channels =                       \
+        PplCvOclAdaptiveThresholdToTest<T, channels>;                          \
+TEST_P(PplCvOclAdaptiveThresholdToTest ## T ## channels, Standard) {           \
   bool identity = this->apply();                                               \
   EXPECT_TRUE(identity);                                                       \
 }                                                                              \
                                                                                \
 INSTANTIATE_TEST_CASE_P(IsEqual,                                               \
-  PplCvOclAdaptiveThresholdToTest ## T ## channels,                       \
+  PplCvOclAdaptiveThresholdToTest ## T ## channels,                            \
   ::testing::Combine(                                                          \
-    ::testing::Values(3),                                       \
-    ::testing::Values(ADAPTIVE_THRESH_MEAN_C),                    \
-    ::testing::Values(THRESH_BINARY),     \
-    ::testing::Values(70),                                      \
-    ::testing::Values(0),                                      \
-    ::testing::Values(BORDER_REPLICATE),                              \
-    ::testing::Values(cv::Size{100, 60})),             \
+    ::testing::Values(3),                                                      \
+    ::testing::Values(ADAPTIVE_THRESH_MEAN_C, ADAPTIVE_THRESH_GAUSSIAN_C),     \
+    ::testing::Values(THRESH_BINARY),                                          \
+    ::testing::Values(70),                                                     \
+    ::testing::Values(0),                                                      \
+    ::testing::Values(BORDER_REPLICATE),                                       \
+    ::testing::Values(cv::Size{321, 240}, cv::Size{642, 480},                  \
+                      cv::Size{1283, 720}, cv::Size{1934, 1080})),                                     \
   [](const testing::TestParamInfo<                                             \
-      PplCvOclAdaptiveThresholdToTest ## T ## channels::ParamType>&       \
+      PplCvOclAdaptiveThresholdToTest ## T ## channels::ParamType>&            \
         info) {                                                                \
-    return adaptivethresholdToString(info.param);                                    \
+    return adaptivethresholdToString(info.param);                              \
   }                                                                            \
 );
 

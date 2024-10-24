@@ -238,11 +238,11 @@ TEST_P(PplCvOclFilter2dToTest ## T ## channels, Standard) {                    \
 INSTANTIATE_TEST_CASE_P(IsEqual,                                               \
   PplCvOclFilter2dToTest ## T ## channels,                                     \
   ::testing::Combine(                                                          \
-    ::testing::Values(1, 5),                                   \
-    ::testing::Values(0, 1),                                           \
-    ::testing::Values(BORDER_REPLICATE, BORDER_REFLECT, BORDER_REFLECT_101),   \
+    ::testing::Values(5, 43),                                       \
+    ::testing::Values(1),                                        \
+    ::testing::Values(BORDER_REPLICATE, BORDER_REFLECT, BORDER_REFLECT_101),                                     \
     ::testing::Values(cv::Size{321, 240}, cv::Size{642, 480},                  \
-                      cv::Size{1283, 720})),             \
+                      cv::Size{1283, 720}, cv::Size{1934, 1080})),             \
   [](const testing::TestParamInfo<                                             \
       PplCvOclFilter2dToTest ## T ## channels::ParamType>&                     \
         info) {                                                                \

@@ -14,8 +14,8 @@
  * under the License.
  */
 
-#ifndef _ST_HPC_PPL_CV_OCL_WARPPERSPECTIVE_H_
-#define _ST_HPC_PPL_CV_OCL_WARPPERSPECTIVE_H_
+#ifndef _ST_HPC_PPL_CV_OCL_INTEGRAL_H_
+#define _ST_HPC_PPL_CV_OCL_INTEGRAL_H_
 
 #include "CL/cl.h"
 
@@ -123,4 +123,4 @@ ppl::common::RetCode Integral(cl_command_queue queue,
 }  // namespace cv
 }  // namespace ppl
 
-#endif  // _ST_HPC_PPL_CV_OCL_WARPPERSPECTIVE_H_
+#endif  // _ST_HPC_PPL_CV_OCL_INTEGRAL_H_

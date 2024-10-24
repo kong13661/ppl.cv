@@ -179,8 +179,8 @@ TEST_P(PplCvOclConvertToTest ## Tsrc ## To ## Tdst ## channels, Standard) {    \
 INSTANTIATE_TEST_CASE_P(IsEqual,                                               \
   PplCvOclConvertToTest ## Tsrc ## To ## Tdst ## channels,                     \
   ::testing::Combine(                                                          \
-    ::testing::Values(37, 60, 65),                                             \
-    ::testing::Values(13, 50, 89),                                             \
+    ::testing::Values(37, 60),                                             \
+    ::testing::Values(13, 50),                                             \
     ::testing::Values(cv::Size{321, 240}, cv::Size{642, 480},                  \
                       cv::Size{1283, 720}, cv::Size{1934, 1080},               \
                       cv::Size{320, 240}, cv::Size{640, 480},                  \

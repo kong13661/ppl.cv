@@ -69,141 +69,44 @@ RetCode adaptivethreshold_meanC1U8(const cl_mem src, int rows, int cols,
   }
   int global_cols, global_rows;
   size_t global_size[2];
-  if (border_type == BORDER_REPLICATE) {
-    uchar setted_value = 0;
-    if (maxValue < 255.f) {
-      setted_value = rintf(maxValue);
-    }
-    else {
-      setted_value = 255;
-    }
-    int int_delta = 0;
-    if (threshold_type == THRESH_BINARY) {
-      int_delta = std::ceil(delta);
-    }
-    else {
-      int_delta = std::floor(delta);
-    }
-    float weight = 1.0f / (float)(ksize * ksize);
-    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
-    global_cols = divideUp(cols, 2, 1);
-    global_rows = divideUp(rows, 2, 1);
-    global_size[0] = (size_t)global_cols;
-    global_size[1] = (size_t)global_rows;
-    frame_chain->setCompileOptions(
-        "-D ADAPTIVETHRESHOLD_interpolateReplicateBorderMEAN");
-    runOclKernel(
-        frame_chain,
-        "adaptivethreshold_meanU8F32interpolateReplicateBorderC1Kernel", 2,
-        global_size, local_size, src, src_stride, src, rows, cols, ksize >> 1,
-        src_stride, buffer, rows * (int)sizeof(float), threshold_type, weight,
-        int_delta, setted_value);
-    global_cols = divideUp(cols, 4, 2);
-    global_rows = divideUp(rows, 4, 2);
-    global_size[0] = (size_t)global_rows;
-    global_size[1] = (size_t)global_cols;
-    runOclKernel(
-        frame_chain,
-        "adaptivethreshold_meanF32U8interpolateReplicateBorderC1Kernel", 2,
-        global_size, local_size, src, src_stride, buffer, cols, rows,
-        ksize >> 1, rows * (int)sizeof(float), dst, dst_stride, threshold_type,
-        weight, int_delta, setted_value);
-    if (memoryPoolUsed()) {
-      pplOclFree(buffer_block);
-    }
-    else {
-      clReleaseMemObject(buffer);
-    }
+  uchar setted_value = 0;
+  if (maxValue < 255.f) {
+    setted_value = rintf(maxValue);
   }
-  else if (border_type == BORDER_REFLECT) {
-    uchar setted_value = 0;
-    if (maxValue < 255.f) {
-      setted_value = rintf(maxValue);
-    }
-    else {
-      setted_value = 255;
-    }
-    int int_delta = 0;
-    if (threshold_type == THRESH_BINARY) {
-      int_delta = std::ceil(delta);
-    }
-    else {
-      int_delta = std::floor(delta);
-    }
-    float weight = 1.0f / (float)(ksize * ksize);
-    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
-    global_cols = divideUp(cols, 2, 1);
-    global_rows = divideUp(rows, 2, 1);
-    global_size[0] = (size_t)global_cols;
-    global_size[1] = (size_t)global_rows;
-    frame_chain->setCompileOptions(
-        "-D ADAPTIVETHRESHOLD_interpolateReflectBorderMEAN");
-    runOclKernel(frame_chain,
-                 "adaptivethreshold_meanU8F32interpolateReflectBorderC1Kernel",
-                 2, global_size, local_size, src, src_stride, src, rows, cols,
-                 ksize >> 1, src_stride, buffer, rows * (int)sizeof(float),
-                 threshold_type, weight, int_delta, setted_value);
-    global_cols = divideUp(cols, 4, 2);
-    global_rows = divideUp(rows, 4, 2);
-    global_size[0] = (size_t)global_rows;
-    global_size[1] = (size_t)global_cols;
-    runOclKernel(frame_chain,
-                 "adaptivethreshold_meanF32U8interpolateReflectBorderC1Kernel",
-                 2, global_size, local_size, src, src_stride, buffer, cols,
-                 rows, ksize >> 1, rows * (int)sizeof(float), dst, dst_stride,
-                 threshold_type, weight, int_delta, setted_value);
-    if (memoryPoolUsed()) {
-      pplOclFree(buffer_block);
-    }
-    else {
-      clReleaseMemObject(buffer);
-    }
+  else {
+    setted_value = 255;
   }
-  else if (border_type == BORDER_REFLECT_101) {
-    uchar setted_value = 0;
-    if (maxValue < 255.f) {
-      setted_value = rintf(maxValue);
-    }
-    else {
-      setted_value = 255;
-    }
-    int int_delta = 0;
-    if (threshold_type == THRESH_BINARY) {
-      int_delta = std::ceil(delta);
-    }
-    else {
-      int_delta = std::floor(delta);
-    }
-    float weight = 1.0f / (float)(ksize * ksize);
-    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
-    global_cols = divideUp(cols, 2, 1);
-    global_rows = divideUp(rows, 2, 1);
-    global_size[0] = (size_t)global_cols;
-    global_size[1] = (size_t)global_rows;
-    frame_chain->setCompileOptions(
-        "-D ADAPTIVETHRESHOLD_interpolateReflect101BorderMEAN");
-    runOclKernel(
-        frame_chain,
-        "adaptivethreshold_meanU8F32interpolateReflect101BorderC1Kernel", 2,
-        global_size, local_size, src, src_stride, src, rows, cols, ksize >> 1,
-        src_stride, buffer, rows * (int)sizeof(float), threshold_type, weight,
-        int_delta, setted_value);
-    global_cols = divideUp(cols, 4, 2);
-    global_rows = divideUp(rows, 4, 2);
-    global_size[0] = (size_t)global_rows;
-    global_size[1] = (size_t)global_cols;
-    runOclKernel(
-        frame_chain,
-        "adaptivethreshold_meanF32U8interpolateReflect101BorderC1Kernel", 2,
-        global_size, local_size, src, src_stride, buffer, cols, rows,
-        ksize >> 1, rows * (int)sizeof(float), dst, dst_stride, threshold_type,
-        weight, int_delta, setted_value);
-    if (memoryPoolUsed()) {
-      pplOclFree(buffer_block);
-    }
-    else {
-      clReleaseMemObject(buffer);
-    }
+  int int_delta = 0;
+  if (threshold_type == THRESH_BINARY) {
+    int_delta = std::ceil(delta);
+  }
+  else {
+    int_delta = std::floor(delta);
+  }
+  float weight = 1.0f / (float)(ksize * ksize);
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  global_cols = divideUp(cols, 2, 1);
+  global_rows = divideUp(rows, 2, 1);
+  global_size[0] = (size_t)global_cols;
+  global_size[1] = (size_t)global_rows;
+  frame_chain->setCompileOptions("-D ADAPTIVETHRESHOLD_MEAN");
+  runOclKernel(frame_chain, "adaptivethreshold_meanU8F32C1Kernel", 2,
+               global_size, local_size, src, src_stride, src, rows, cols,
+               ksize >> 1, src_stride, buffer, rows * (int)sizeof(float),
+               threshold_type, weight, int_delta, setted_value, border_type);
+  global_cols = divideUp(cols, 4, 2);
+  global_rows = divideUp(rows, 4, 2);
+  global_size[0] = (size_t)global_rows;
+  global_size[1] = (size_t)global_cols;
+  runOclKernel(frame_chain, "adaptivethreshold_meanF32U8C1Kernel", 2,
+               global_size, local_size, src, src_stride, buffer, cols, rows,
+               ksize >> 1, rows * (int)sizeof(float), dst, dst_stride,
+               threshold_type, weight, int_delta, setted_value, border_type);
+  if (memoryPoolUsed()) {
+    pplOclFree(buffer_block);
+  }
+  else {
+    clReleaseMemObject(buffer);
   }
   return RC_SUCCESS;
 }
@@ -229,235 +132,74 @@ RetCode adaptivethreshold_gaussianblurC1U8(const cl_mem src, int rows, int cols,
   FrameChain* frame_chain = getSharedFrameChain();
   frame_chain->setProjectName("cv");
   SET_PROGRAM_SOURCE(frame_chain, adaptivethreshold);
-  cl_context context = frame_chain->getContext();
-  cl_int error_code;
-  cl_mem buffer = clCreateBuffer(
-      context, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
-      cols * (int)sizeof(float) * rows * (int)sizeof(float), NULL, &error_code);
-  CHECK_ERROR(error_code, clCreateBuffer);
-  cl_mem kernel =
-      clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY,
-                     ksize * (int)sizeof(float), NULL, &error_code);
-  CHECK_ERROR(error_code, clCreateBuffer);
   int global_cols, global_rows;
   size_t global_size[2];
-  if (border_type == BORDER_REPLICATE) {
-    uchar setted_value = 0;
-    if (maxValue < 255.f) {
-      setted_value = rintf(maxValue);
-    }
-    else {
-      setted_value = 255;
-    }
-    int int_delta = 0;
-    if (threshold_type == THRESH_BINARY) {
-      int_delta = std::ceil(delta);
-    }
-    else {
-      int_delta = std::floor(delta);
-    }
-    cl_mem buffer, kernel;
-    GpuMemoryBlock buffer_block, kernel_block;
-    buffer_block.offset = 0;
-    kernel_block.offset = 0;
-    if (memoryPoolUsed()) {
-      pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols);
-      buffer = buffer_block.data;
-      pplOclMalloc(kernel_block, ksize * (int)sizeof(float));
-      kernel = kernel_block.data;
-    }
-    else {
-      cl_int error_code = 0;
-      buffer = clCreateBuffer(
-          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
-          rows * (int)sizeof(float) * cols, NULL, &error_code);
-      CHECK_ERROR(error_code, clCreateBuffer);
-      kernel = clCreateBuffer(frame_chain->getContext(),
-                              CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
-                              ksize * (int)sizeof(float), NULL, &error_code);
-      CHECK_ERROR(error_code, clCreateBuffer);
-    }
-    global_size[0] = (size_t)1;
-    frame_chain->setCompileOptions(
-        "-D ADAPTIVETHRESHOLD_interpolateReplicateBorderGAUSSIANBLUE");
-    runOclKernel(frame_chain, "getGaussianKernel", 1, global_size, global_size,
-                 0, ksize, kernel, (int)kernel_block.offset);
-    ksize = ksize >> 1;
-    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
-    global_cols = divideUp(cols, 2, 1);
-    global_rows = divideUp(rows, 2, 1);
-    global_size[0] = (size_t)global_cols;
-    global_size[1] = (size_t)global_rows;
-    runOclKernel(
-        frame_chain,
-        "adaptivethreshold_gaussianblurU8F32interpolateReplicateBorderC1Kernel",
-        2, global_size, local_size, src, src_stride, src, rows, cols, kernel,
-        (int)kernel_block.offset, ksize, src_stride, buffer,
-        rows * (int)sizeof(float), threshold_type, int_delta, setted_value);
-    global_cols = divideUp(cols, 4, 2);
-    global_rows = divideUp(rows, 4, 2);
-    global_size[0] = (size_t)global_rows;
-    global_size[1] = (size_t)global_cols;
-    runOclKernel(
-        frame_chain,
-        "adaptivethreshold_gaussianblurF32U8interpolateReplicateBorderC1Kernel",
-        2, global_size, local_size, src, src_stride, buffer, cols, rows, kernel,
-        (int)kernel_block.offset, ksize, rows * (int)sizeof(float), dst,
-        dst_stride, threshold_type, int_delta, setted_value);
-    if (memoryPoolUsed()) {
-      pplOclFree(buffer_block);
-      pplOclFree(kernel_block);
-    }
-    else {
-      clReleaseMemObject(buffer);
-      clReleaseMemObject(kernel);
-    }
+  uchar setted_value = 0;
+  if (maxValue < 255.f) {
+    setted_value = rintf(maxValue);
   }
-  else if (border_type == BORDER_REFLECT) {
-    uchar setted_value = 0;
-    if (maxValue < 255.f) {
-      setted_value = rintf(maxValue);
-    }
-    else {
-      setted_value = 255;
-    }
-    int int_delta = 0;
-    if (threshold_type == THRESH_BINARY) {
-      int_delta = std::ceil(delta);
-    }
-    else {
-      int_delta = std::floor(delta);
-    }
-    cl_mem buffer, kernel;
-    GpuMemoryBlock buffer_block, kernel_block;
-    buffer_block.offset = 0;
-    kernel_block.offset = 0;
-    if (memoryPoolUsed()) {
-      pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols);
-      buffer = buffer_block.data;
-      pplOclMalloc(kernel_block, ksize * (int)sizeof(float));
-      kernel = kernel_block.data;
-    }
-    else {
-      cl_int error_code = 0;
-      buffer = clCreateBuffer(
-          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
-          rows * (int)sizeof(float) * cols, NULL, &error_code);
-      CHECK_ERROR(error_code, clCreateBuffer);
-      kernel = clCreateBuffer(frame_chain->getContext(),
-                              CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
-                              ksize * (int)sizeof(float), NULL, &error_code);
-      CHECK_ERROR(error_code, clCreateBuffer);
-    }
-    global_size[0] = (size_t)1;
-    frame_chain->setCompileOptions(
-        "-D ADAPTIVETHRESHOLD_interpolateReflectBorderGAUSSIANBLUE");
-    runOclKernel(frame_chain, "getGaussianKernel", 1, global_size, global_size,
-                 0, ksize, kernel, (int)kernel_block.offset);
-    ksize = ksize >> 1;
-    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
-    global_cols = divideUp(cols, 2, 1);
-    global_rows = divideUp(rows, 2, 1);
-    global_size[0] = (size_t)global_cols;
-    global_size[1] = (size_t)global_rows;
-    runOclKernel(
-        frame_chain,
-        "adaptivethreshold_gaussianblurU8F32interpolateReflectBorderC1Kernel",
-        2, global_size, local_size, src, src_stride, src, rows, cols, kernel,
-        (int)kernel_block.offset, ksize, src_stride, buffer,
-        rows * (int)sizeof(float), threshold_type, int_delta, setted_value);
-    global_cols = divideUp(cols, 4, 2);
-    global_rows = divideUp(rows, 4, 2);
-    global_size[0] = (size_t)global_rows;
-    global_size[1] = (size_t)global_cols;
-    runOclKernel(
-        frame_chain,
-        "adaptivethreshold_gaussianblurF32U8interpolateReflectBorderC1Kernel",
-        2, global_size, local_size, src, src_stride, buffer, cols, rows, kernel,
-        (int)kernel_block.offset, ksize, rows * (int)sizeof(float), dst,
-        dst_stride, threshold_type, int_delta, setted_value);
-    if (memoryPoolUsed()) {
-      pplOclFree(buffer_block);
-      pplOclFree(kernel_block);
-    }
-    else {
-      clReleaseMemObject(buffer);
-      clReleaseMemObject(kernel);
-    }
+  else {
+    setted_value = 255;
   }
-  else if (border_type == BORDER_REFLECT_101) {
-    uchar setted_value = 0;
-    if (maxValue < 255.f) {
-      setted_value = rintf(maxValue);
-    }
-    else {
-      setted_value = 255;
-    }
-    int int_delta = 0;
-    if (threshold_type == THRESH_BINARY) {
-      int_delta = std::ceil(delta);
-    }
-    else {
-      int_delta = std::floor(delta);
-    }
-    cl_mem buffer, kernel;
-    GpuMemoryBlock buffer_block, kernel_block;
-    buffer_block.offset = 0;
-    kernel_block.offset = 0;
-    if (memoryPoolUsed()) {
-      pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols);
-      buffer = buffer_block.data;
-      pplOclMalloc(kernel_block, ksize * (int)sizeof(float));
-      kernel = kernel_block.data;
-    }
-    else {
-      cl_int error_code = 0;
-      buffer = clCreateBuffer(
-          frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
-          rows * (int)sizeof(float) * cols, NULL, &error_code);
-      CHECK_ERROR(error_code, clCreateBuffer);
-      kernel = clCreateBuffer(frame_chain->getContext(),
-                              CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
-                              ksize * (int)sizeof(float), NULL, &error_code);
-      CHECK_ERROR(error_code, clCreateBuffer);
-    }
-    global_size[0] = (size_t)1;
-    frame_chain->setCompileOptions(
-        "-D ADAPTIVETHRESHOLD_interpolateReflect101BorderGAUSSIANBLUE");
-    runOclKernel(frame_chain, "getGaussianKernel", 1, global_size, global_size,
-                 0, ksize, kernel, (int)kernel_block.offset);
-    ksize = ksize >> 1;
-    size_t local_size[] = {kBlockDimX0, kBlockDimY0};
-    global_cols = divideUp(cols, 2, 1);
-    global_rows = divideUp(rows, 2, 1);
-    global_size[0] = (size_t)global_cols;
-    global_size[1] = (size_t)global_rows;
-    runOclKernel(frame_chain,
-                 "adaptivethreshold_"
-                 "gaussianblurU8F32interpolateReflect101BorderC1Kernel",
-                 2, global_size, local_size, src, src_stride, src, rows, cols,
-                 kernel, (int)kernel_block.offset, ksize, src_stride, buffer,
-                 rows * (int)sizeof(float), threshold_type, int_delta,
-                 setted_value);
-    global_cols = divideUp(cols, 4, 2);
-    global_rows = divideUp(rows, 4, 2);
-    global_size[0] = (size_t)global_rows;
-    global_size[1] = (size_t)global_cols;
-    runOclKernel(frame_chain,
-                 "adaptivethreshold_"
-                 "gaussianblurF32U8interpolateReflect101BorderC1Kernel",
-                 2, global_size, local_size, src, src_stride, buffer, cols,
-                 rows, kernel, (int)kernel_block.offset, ksize,
-                 rows * (int)sizeof(float), dst, dst_stride, threshold_type,
-                 int_delta, setted_value);
-    if (memoryPoolUsed()) {
-      pplOclFree(buffer_block);
-      pplOclFree(kernel_block);
-    }
-    else {
-      clReleaseMemObject(buffer);
-      clReleaseMemObject(kernel);
-    }
+  int int_delta = 0;
+  if (threshold_type == THRESH_BINARY) {
+    int_delta = std::ceil(delta);
+  }
+  else {
+    int_delta = std::floor(delta);
+  }
+  cl_mem buffer, kernel;
+  GpuMemoryBlock buffer_block, kernel_block;
+  buffer_block.offset = 0;
+  kernel_block.offset = 0;
+  if (memoryPoolUsed()) {
+    pplOclMalloc(buffer_block, rows * (int)sizeof(float) * cols);
+    buffer = buffer_block.data;
+    pplOclMalloc(kernel_block, ksize * (int)sizeof(float));
+    kernel = kernel_block.data;
+  }
+  else {
+    cl_int error_code = 0;
+    buffer = clCreateBuffer(
+        frame_chain->getContext(), CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+        rows * (int)sizeof(float) * cols, NULL, &error_code);
+    CHECK_ERROR(error_code, clCreateBuffer);
+    kernel = clCreateBuffer(frame_chain->getContext(),
+                            CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS,
+                            ksize * (int)sizeof(float), NULL, &error_code);
+    CHECK_ERROR(error_code, clCreateBuffer);
+  }
+  global_size[0] = (size_t)1;
+  frame_chain->setCompileOptions("-D ADAPTIVETHRESHOLD_GAUSSIANBLUE");
+  runOclKernel(frame_chain, "getGaussianKernel", 1, global_size, global_size, 0,
+               ksize, kernel, (int)kernel_block.offset);
+  ksize = ksize >> 1;
+  size_t local_size[] = {kBlockDimX0, kBlockDimY0};
+  global_cols = divideUp(cols, 2, 1);
+  global_rows = divideUp(rows, 2, 1);
+  global_size[0] = (size_t)global_cols;
+  global_size[1] = (size_t)global_rows;
+  runOclKernel(frame_chain, "adaptivethreshold_gaussianblurU8F32C1Kernel", 2,
+               global_size, local_size, src, src_stride, src, rows, cols,
+               kernel, (int)kernel_block.offset, ksize, src_stride, buffer,
+               rows * (int)sizeof(float), threshold_type, int_delta,
+               setted_value, border_type);
+  global_cols = divideUp(cols, 4, 2);
+  global_rows = divideUp(rows, 4, 2);
+  global_size[0] = (size_t)global_rows;
+  global_size[1] = (size_t)global_cols;
+  runOclKernel(frame_chain, "adaptivethreshold_gaussianblurF32U8C1Kernel", 2,
+               global_size, local_size, src, src_stride, buffer, cols, rows,
+               kernel, (int)kernel_block.offset, ksize,
+               rows * (int)sizeof(float), dst, dst_stride, threshold_type,
+               int_delta, setted_value, border_type);
+  if (memoryPoolUsed()) {
+    pplOclFree(buffer_block);
+    pplOclFree(kernel_block);
+  }
+  else {
+    clReleaseMemObject(buffer);
+    clReleaseMemObject(kernel);
   }
   return RC_SUCCESS;
 }

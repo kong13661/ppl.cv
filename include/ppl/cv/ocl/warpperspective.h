@@ -128,7 +128,7 @@ ppl::common::RetCode WarpPerspective(cl_command_queue queue,
                                   cl_mem outData,
                                   const float *perspectiveMatrix,
                                   InterpolationType interpolation,
-                                  BorderType border_type,
+                                  BorderType border_type = BORDER_CONSTANT,
                                   T borderValue = 0);
 
 }  // namespace ocl

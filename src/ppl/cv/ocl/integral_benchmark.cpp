@@ -111,7 +111,11 @@ void BM_Integral_opencv_ocl(benchmark::State &state) {
 BENCHMARK_TEMPLATE(BM_Integral_opencv_ocl, uchar, int)->                     \
                    Args({width, height});                                    \
 BENCHMARK_TEMPLATE(BM_Integral_ppl_ocl, uchar, int)->Args({width, height})-> \
-                   UseManualTime()->Iterations(10);
+                   UseManualTime()->Iterations(10);                          \
+BENCHMARK_TEMPLATE(BM_Integral_opencv_ocl, float, float)->                     \
+                   Args({width, height});                                    \
+BENCHMARK_TEMPLATE(BM_Integral_ppl_ocl, float, float)->Args({width, height})-> \
+                   UseManualTime()->Iterations(10);                          
 
 RUN_BENCHMARK1(320, 240)
 RUN_BENCHMARK1(640, 480)
